@@ -4,7 +4,7 @@
 
 ❗ Change variables in the `.env` to meet your requirements.
 
-💡 Note that the .env file should be in the same directory as `01-traefik-outline-letsencrypt-docker-compose.yml`, `02-keycloak-outline-docker-compose.yml`, and `03-outline-minio-redis-docker-compose.yml`.
+💡 Note that the `.env` file should be in the same directory as `01-traefik-outline-letsencrypt-docker-compose.yml`, `02-keycloak-outline-docker-compose.yml`, and `03-outline-minio-redis-docker-compose.yml`.
 
 ❗ The value for the `OUTLINE_OIDC_CLIENT_SECRET` variable can be obtained after installing Keycloak using `02-keycloak-outline-docker-compose.yml`.
 
