@@ -131,8 +131,8 @@ version: '3.7'
 networks:
   outline-network:
     external: true
-  keycloak-network:
-    external: true
+  # keycloak-network:
+  #   external: true
   traefik-network:
     external: true
 
@@ -312,7 +312,7 @@ services:
       OIDC_SCOPES: ${OUTLINE_OIDC_SCOPES}
     networks:
       - outline-network
-      - keycloak-network
+      # - keycloak-network
       - traefik-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/"]
