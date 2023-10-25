@@ -151,7 +151,7 @@ By utilizing this script, you can efficiently restore application data from an e
 - `docker swarm init --advertise-addr <IP_OF_DROPLET>` on master node, i.e. keycloak and traefik node. Then use the generated join command on outline node to create cluster.
 - `docker network create --driver overlay --attachable <NETWORK_NAME>` instead of `docker network create <NETWORK_NAME>` given in beginning in this guide.
 - `export $(cat .env) > /dev/null 2>&1; docker stack deploy -c 01-traefik-outline-letsencrypt-docker-compose.yml traefik` (To resolve [issue](https://forums.docker.com/t/docker-stack-deploy-with-context-and-env-variables/96152/4): docker stack not able to pick .env file variables).
-- 
+- Also we dont want double $$ in password for traefikadmin password in .env.
 
 # Author
 
