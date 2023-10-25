@@ -126,6 +126,8 @@
 # Support on Ko-fi: https://ko-fi.com/heyValdemar
 # Support on PayPal: https://www.paypal.com/paypalme/heyValdemarCOM
 
+version: "3.10"
+
 networks:
   outline-network:
     external: true
@@ -196,8 +198,7 @@ services:
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
-        condition: service_healthy
+      - postgres-keycloak
 
   backups-keycloak:
     image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
@@ -223,5 +224,4 @@ services:
       - keycloak-network
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
-        condition: service_healthy
+      - postgres-keycloak
