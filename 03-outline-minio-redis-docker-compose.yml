@@ -332,12 +332,9 @@ services:
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
-      postgres-outline:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - postgres-outline
+      - redis
+      - minio
 
   backups-outline:
     image: ${OUTLINE_POSTGRES_IMAGE_TAG}
@@ -371,5 +368,4 @@ services:
       - outline-network
     restart: unless-stopped
     depends_on:
-      postgres-outline:
-        condition: service_healthy
+      - postgres-outline
