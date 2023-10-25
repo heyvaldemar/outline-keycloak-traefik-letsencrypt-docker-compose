@@ -126,6 +126,8 @@
 # Support on Ko-fi: https://ko-fi.com/heyValdemar
 # Support on PayPal: https://www.paypal.com/paypalme/heyValdemarCOM
 
+version: '3.7'
+
 networks:
   outline-network:
     external: true
