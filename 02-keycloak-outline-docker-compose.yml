@@ -129,8 +129,8 @@
 version: "3.10"
 
 networks:
-  outline-network:
-    external: true
+  # outline-network:
+  #   external: true
   keycloak-network:
     external: true
   traefik-network:
@@ -181,7 +181,7 @@ services:
       KC_METRICS_ENABLED: 'true'
       KEYCLOAK_LOGLEVEL: ${KEYCLOAK_LOG_LEVEL}
     networks:
-      - outline-network
+      # - outline-network
       - keycloak-network
       - traefik-network
     labels:
