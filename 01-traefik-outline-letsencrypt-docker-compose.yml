@@ -71,7 +71,7 @@
 # 4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
 # 5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
 # 6. **Start Service**: Restarts the service after the restoration is completed.
-# To make the `keycloak-restore-database.shh` script executable, run the following command:
+# To make the `keycloak-restore-database.sh` script executable, run the following command:
 # `chmod +x keycloak-restore-database.sh`
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
@@ -83,7 +83,7 @@
 # 4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
 # 5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
 # 6. **Start Service**: Restarts the service after the restoration is completed.
-# To make the `outline-restore-database.shh` script executable, run the following command:
+# To make the `outline-restore-database.sh` script executable, run the following command:
 # `chmod +x outline-restore-database.sh`
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
