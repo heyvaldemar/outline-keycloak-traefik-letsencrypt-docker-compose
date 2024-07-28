@@ -135,97 +135,241 @@ networks:
     external: true
 
 volumes:
-  keycloak-postgres:
-  keycloak-postgres-backup:
-  keycloak-database-backups:
+  minio-data:
+  outline-postgres:
+  outline-postgres-backup:
+  outline-data-backups:
+  outline-database-backups:
 
 services:
-  postgres-keycloak:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+  postgres-outline:
+    image: ${OUTLINE_POSTGRES_IMAGE_TAG}
     volumes:
-      - keycloak-postgres:/var/lib/postgresql/data
+      - outline-postgres:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
-      POSTGRES_USER: ${KEYCLOAK_DB_USER}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: ${OUTLINE_DB_NAME}
+      POSTGRES_USER: ${OUTLINE_DB_USER}
+      POSTGRES_PASSWORD: ${OUTLINE_DB_PASSWORD}
     networks:
-      - keycloak-network
+      - outline-network
     healthcheck:
-      test: [ "CMD", "pg_isready", "-q", "-d", "${KEYCLOAK_DB_NAME}", "-U", "${KEYCLOAK_DB_USER}" ]
+      test: [ "CMD", "pg_isready", "-q", "-d", "${OUTLINE_DB_NAME}", "-U", "${OUTLINE_DB_USER}" ]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 60s
     restart: unless-stopped
 
-  keycloak:
-    image: ${KEYCLOAK_IMAGE_TAG}
-    command: start-dev
+  redis:
+    image: ${OUTLINE_REDIS_IMAGE_TAG}
+    networks:
+      - outline-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  minio:
+    image: ${OUTLINE_MINIO_IMAGE_TAG}
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        minio server /data --console-address :9001 &
+        sleep 20
+        mc config host add minio http://localhost:9000 ${OUTLINE_MINIO_ADMIN} ${OUTLINE_MINIO_ADMIN_PASSWORD}
+        mc mb minio/${OUTLINE_MINIO_BUCKET_NAME}
+        mc admin user add minio ${OUTLINE_MINIO_USER} ${OUTLINE_MINIO_USER_PASSWORD}
+        cat > outline-policy.json <<-EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "s3:GetBucketLocation",
+                  "s3:ListBucket",
+                  "s3:ListBucketMultipartUploads"
+                ],
+                "Resource": [
+                  "arn:aws:s3:::${OUTLINE_MINIO_BUCKET_NAME}"
+                ]
+              },
+              {
+                "Action": [
+                  "s3:AbortMultipartUpload",
+                  "s3:DeleteObject",
+                  "s3:GetObject",
+                  "s3:ListMultipartUploadParts",
+                  "s3:PutObject",
+                  "s3:GetObject"
+                ],
+                "Effect": "Allow",
+                "Resource": [
+                  "arn:aws:s3:::${OUTLINE_MINIO_BUCKET_NAME}/*"
+                ],
+                "Sid": ""
+              }
+            ]
+          }
+        EOF
+        cat > data-public.json <<-EOF
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                "AWS": [
+                  "*"
+                ]
+              },
+                "Action": [
+                  "s3:GetObject",
+                  "s3:ListMultipartUploadParts"
+                ],
+                "Resource": [
+                  "arn:aws:s3:::data/public/*"
+                ]
+              }
+            ]
+          }
+        EOF
+        mc anonymous set-json data-public.json minio/${OUTLINE_MINIO_BUCKET_NAME}
+        mc admin policy create minio OutlineAppFullAccess outline-policy.json
+        mc admin policy attach minio OutlineAppFullAccess --user=${OUTLINE_MINIO_USER}
+        tail -f /dev/null
+    volumes:
+      - minio-data:/data
     environment:
-      KC_DB: postgres
-      KC_DB_URL_HOST: postgres-keycloak
-      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KC_DB_SCHEMA: public
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-      KEYCLOAK_ENABLE_HEALTH_ENDPOINTS: 'true'
-      KEYCLOAK_ENABLE_STATISTICS: 'true'
-      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
-      KC_PROXY: edge
-      KC_PROXY_ADDRESS_FORWARDING: 'true'
-      KC_HTTP_ENABLED: 'true'
+      MINIO_ROOT_USER: ${OUTLINE_MINIO_ADMIN}
+      MINIO_ROOT_PASSWORD: ${OUTLINE_MINIO_ADMIN_PASSWORD}
+      MINIO_BROWSER_REDIRECT_URL: ${OUTLINE_MINIO_CONSOLE_URL}
+    networks:
+      - outline-network
+      - traefik-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.minio-api.rule=Host(`${OUTLINE_MINIO_HOSTNAME}`)"
+      - "traefik.http.routers.minio-api.service=minio-api"
+      - "traefik.http.routers.minio-api.entrypoints=websecure"
+      - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
+      - "traefik.http.routers.minio-api.tls=true"
+      - "traefik.http.routers.minio-api.tls.certresolver=letsencrypt"
+      - "traefik.http.services.minio-api.loadbalancer.passhostheader=true"
+      - "traefik.http.routers.minio-api.middlewares=compresstraefik"
+      - "traefik.http.routers.minio-console.rule=Host(`${OUTLINE_MINIO_CONSOLE_HOSTNAME}`)"
+      - "traefik.http.routers.minio-console.service=minio-console"
+      - "traefik.http.routers.minio-console.entrypoints=websecure"
+      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
+      - "traefik.http.routers.minio-console.tls=true"
+      - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
+      - "traefik.http.services.minio-console.loadbalancer.passhostheader=true"
+      - "traefik.http.routers.minio-console.middlewares=compresstraefik"
+      - "traefik.http.middlewares.compresstraefik.compress=true"
+      - "traefik.docker.network=traefik-network"
+    restart: unless-stopped
+
+  outline:
+    image: ${OUTLINE_IMAGE_TAG}
+    environment:
+      DATABASE_URL: postgres://${OUTLINE_DB_USER}:${OUTLINE_DB_PASSWORD}@postgres-outline:5432/${OUTLINE_DB_NAME}?sslmode=disable&connect_timeout=10
+      PGSSLMODE: disable
+      REDIS_URL: redis://redis:6379
+      URL: ${OUTLINE_URL}
+      PORT: 3000
+      SECRET_KEY: ${OUTLINE_SECRET_KEY}
+      UTILS_SECRET: ${OUTLINE_UTILS_SECRET}
+      FORCE_HTTPS: 'false'
+      ENABLE_UPDATES: 'true'
+      AWS_REGION: eu-east-1
+      AWS_ACCESS_KEY_ID: ${OUTLINE_MINIO_USER}
+      AWS_SECRET_ACCESS_KEY: ${OUTLINE_MINIO_USER_PASSWORD}
+      AWS_S3_UPLOAD_BUCKET_URL: ${OUTLINE_AWS_S3_UPLOAD_BUCKET_URL}
+      AWS_S3_ACCELERATE_URL: ${OUTLINE_AWS_S3_UPLOAD_BUCKET_URL}
+      AWS_S3_UPLOAD_BUCKET_NAME: ${OUTLINE_MINIO_BUCKET_NAME}
+      AWS_S3_UPLOAD_MAX_SIZE: ${OUTLINE_AWS_S3_UPLOAD_MAX_SIZE}
+      AWS_S3_FORCE_PATH_STYLE: 'false'
+      AWS_S3_ACL: private
+      OIDC_CLIENT_ID: outline
+      OIDC_CLIENT_SECRET: ${OUTLINE_OIDC_CLIENT_SECRET}
+      OIDC_AUTH_URI: ${OUTLINE_OIDC_AUTH_URI}
+      OIDC_TOKEN_URI: ${OUTLINE_OIDC_TOKEN_URI}
+      OIDC_USERINFO_URI: ${OUTLINE_OIDC_USERINFO_URI}
+      OIDC_DISPLAY_NAME: ${OUTLINE_OIDC_DISPLAY_NAME}
+      OIDC_USERNAME_CLAIM: ${OUTLINE_OIDC_USERNAME_CLAIM}
+      OIDC_SCOPES: ${OUTLINE_OIDC_SCOPES}
     networks:
       - outline-network
       - keycloak-network
       - traefik-network
     healthcheck:
-      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/3000' || exit 1
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 90s
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
-      - "traefik.http.routers.keycloak.service=keycloak"
-      - "traefik.http.routers.keycloak.entrypoints=websecure"
-      - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
-      - "traefik.http.routers.keycloak.tls=true"
-      - "traefik.http.routers.keycloak.tls.certresolver=letsencrypt"
-      - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
-      - "traefik.http.routers.keycloak.middlewares=compresstraefik"
+      - "traefik.http.routers.outline.rule=Host(`${OUTLINE_HOSTNAME}`)"
+      - "traefik.http.routers.outline.service=outline"
+      - "traefik.http.routers.outline.entrypoints=websecure"
+      - "traefik.http.services.outline.loadbalancer.server.port=3000"
+      - "traefik.http.routers.outline.tls=true"
+      - "traefik.http.routers.outline.tls.certresolver=letsencrypt"
+      - "traefik.http.services.outline.loadbalancer.passhostheader=true"
+      - "traefik.http.routers.outline.middlewares=compresstraefik"
       - "traefik.http.middlewares.compresstraefik.compress=true"
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
+      postgres-outline:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
-  backups-keycloak:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+  backups-outline:
+    image: ${OUTLINE_POSTGRES_IMAGE_TAG}
     command: >-
-      sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
+      sh -c 'sleep $OUTLINE_BACKUP_INIT_SLEEP &&
       while true; do
-        pg_dump -h postgres-keycloak -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
-        find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        sleep $KEYCLOAK_BACKUP_INTERVAL; done'
+        pg_dump -h postgres-outline -p 5432 -d $OUTLINE_DB_NAME -U $OUTLINE_DB_USER | gzip > $OUTLINE_POSTGRES_BACKUPS_PATH/$OUTLINE_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
+        tar -zcpf $OUTLINE_DATA_BACKUPS_PATH/$OUTLINE_DATA_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").tar.gz $OUTLINE_DATA_PATH &&
+        find $OUTLINE_POSTGRES_BACKUPS_PATH -type f -mtime +$OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
+        find $OUTLINE_DATA_BACKUPS_PATH -type f -mtime +$OUTLINE_DATA_BACKUP_PRUNE_DAYS | xargs rm -f;
+        sleep $OUTLINE_BACKUP_INTERVAL; done'
     volumes:
-      - keycloak-postgres-backup:/var/lib/postgresql/data
-      - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH}
+      - outline-postgres-backup:/var/lib/postgresql/data
+      - minio-data:${OUTLINE_DATA_PATH}
+      - outline-data-backups:${OUTLINE_DATA_BACKUPS_PATH}
+      - outline-database-backups:${OUTLINE_POSTGRES_BACKUPS_PATH}
     environment:
-      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
-      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
-      PGPASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KEYCLOAK_BACKUP_INIT_SLEEP: ${KEYCLOAK_BACKUP_INIT_SLEEP}
-      KEYCLOAK_BACKUP_INTERVAL: ${KEYCLOAK_BACKUP_INTERVAL}
-      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: ${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}
-      KEYCLOAK_POSTGRES_BACKUPS_PATH: ${KEYCLOAK_POSTGRES_BACKUPS_PATH}
-      KEYCLOAK_POSTGRES_BACKUP_NAME: ${KEYCLOAK_POSTGRES_BACKUP_NAME}
+      OUTLINE_DB_NAME: ${OUTLINE_DB_NAME}
+      OUTLINE_DB_USER: ${OUTLINE_DB_USER}
+      PGPASSWORD: ${OUTLINE_DB_PASSWORD}
+      OUTLINE_BACKUP_INIT_SLEEP: ${OUTLINE_BACKUP_INIT_SLEEP}
+      OUTLINE_BACKUP_INTERVAL: ${OUTLINE_BACKUP_INTERVAL}
+      OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS: ${OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS}
+      OUTLINE_DATA_BACKUP_PRUNE_DAYS: ${OUTLINE_DATA_BACKUP_PRUNE_DAYS}
+      OUTLINE_POSTGRES_BACKUPS_PATH: ${OUTLINE_POSTGRES_BACKUPS_PATH}
+      OUTLINE_DATA_BACKUPS_PATH: ${OUTLINE_DATA_BACKUPS_PATH}
+      OUTLINE_DATA_PATH: ${OUTLINE_DATA_PATH}
+      OUTLINE_POSTGRES_BACKUP_NAME: ${OUTLINE_POSTGRES_BACKUP_NAME}
+      OUTLINE_DATA_BACKUP_NAME: ${OUTLINE_DATA_BACKUP_NAME}
     networks:
-      - keycloak-network
+      - outline-network
     restart: unless-stopped
     depends_on:
-      postgres-keycloak:
+      postgres-outline:
         condition: service_healthy
