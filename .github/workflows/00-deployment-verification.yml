@@ -33,7 +33,6 @@ jobs:
 
     - name: Modify /etc/hosts for internal routing
       run: |
-        echo "127.0.0.1 traefik.outline.heyvaldemar.net" | sudo tee -a /etc/hosts
         echo "127.0.0.1 keycloak.outline.heyvaldemar.net" | sudo tee -a /etc/hosts
         echo "127.0.0.1 outline.heyvaldemar.net" | sudo tee -a /etc/hosts
 
@@ -42,10 +41,8 @@ jobs:
 
     - name: Wait for the applications to be ready via Traefik
       run: |
-        echo "Checking the routing and availability of Traefik dashboard..."
-        timeout 5m bash -c 'while ! curl -fsSLk "https://traefik.outline.heyvaldemar.net/dashboard/"; do echo "Waiting for Traefik to be ready..."; sleep 10; done'
         echo "Checking the routing and availability of Keycloak..."
-        timeout 5m bash -c 'while ! curl -fsSLk "https://keycloak.outline.heyvaldemar.net/auth"; do echo "Waiting for Keycloak to be ready..."; sleep 10; done'
+        timeout 5m bash -c 'while ! curl -fsSLk "https://keycloak.outline.heyvaldemar.net"; do echo "Waiting for Keycloak to be ready..."; sleep 10; done'
         echo "Checking the routing and availability of Outline..."
         timeout 5m bash -c 'while ! curl -fsSLk "https://outline.heyvaldemar.net"; do echo "Waiting for Outline to be ready..."; sleep 10; done'
 
