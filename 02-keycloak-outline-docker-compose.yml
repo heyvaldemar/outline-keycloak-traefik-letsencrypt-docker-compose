@@ -190,16 +190,27 @@ services:
       retries: 3
       start_period: 90s
     labels:
+      # Enable Traefik for this container
       - "traefik.enable=true"
+      # Match incoming requests on a specific hostname
       - "traefik.http.routers.keycloak.rule=Host(`${KEYCLOAK_HOSTNAME}`)"
+      # Assign the router to a named Traefik service
       - "traefik.http.routers.keycloak.service=keycloak"
+      # Use the 'websecure' (HTTPS) entry point
       - "traefik.http.routers.keycloak.entrypoints=websecure"
+      # Define the internal container port for routing
       - "traefik.http.services.keycloak.loadbalancer.server.port=8080"
+      # Enable TLS on this router
       - "traefik.http.routers.keycloak.tls=true"
+      # Use Let's Encrypt for certificate management
       - "traefik.http.routers.keycloak.tls.certresolver=letsencrypt"
+      # Pass the original Host header to the container
       - "traefik.http.services.keycloak.loadbalancer.passhostheader=true"
+      # Apply a compression middleware
       - "traefik.http.routers.keycloak.middlewares=compresstraefik"
+      # Define settings for the compression middleware
       - "traefik.http.middlewares.compresstraefik.compress=true"
+      # Specify which Docker network Traefik should use for routing
       - "traefik.docker.network=traefik-network"
     restart: unless-stopped
     depends_on:

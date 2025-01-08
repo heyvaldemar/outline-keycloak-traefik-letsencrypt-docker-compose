@@ -1,11 +1,5 @@
 # Outline with Keycloak and Let's Encrypt Using Docker Compose
 
-[![Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/00-deployment-verification.yml/badge.svg)](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions)
-
-The badge displayed on my repository indicates the status of the deployment verification workflow as executed on the latest commit to the main branch.
-
-**Passing**: This means the most recent commit has successfully passed all deployment checks, confirming that the Docker Compose setup functions correctly as designed.
-
 📙 The complete installation guide is available on my [website](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
 
 ❗ Change variables in the `.env` to meet your requirements.
@@ -68,114 +62,82 @@ Deploy Keycloak using Docker Compose:
 
 Log in to Outline with the Username or Email specified on the Keycloak.
 
-# Backups
+## Author
 
-The `backups-keycloak` container in the configuration is responsible for the following:
+hey everyone,
 
-1. **Database Backup**: Creates compressed backups of the PostgreSQL database using pg_dump.
-Customizable backup path, filename pattern, and schedule through variables like `KEYCLOAK_POSTGRES_BACKUPS_PATH`, `KEYCLOAK_POSTGRES_BACKUP_NAME`, and `KEYCLOAK_BACKUP_INTERVAL`.
+💾 I’ve been in the IT game for over 20 years, cutting my teeth with some big names like [IBM](https://www.linkedin.com/in/heyvaldemar/), [Thales](https://www.linkedin.com/in/heyvaldemar/), and [Amazon](https://www.linkedin.com/in/heyvaldemar/). These days, I wear the hat of a DevOps Consultant and Team Lead, but what really gets me going is Docker and container technology - I’m kind of obsessed!
 
-2. **Backup Pruning**: Periodically removes backups exceeding a specified age to manage storage. Customizable pruning schedule and age threshold with `KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS`.
+💛 I have my own IT [blog](https://www.heyvaldemar.com/), where I’ve built a [community](https://discord.gg/AJQGCCBcqf) of DevOps enthusiasts who share my love for all things Docker, containers, and IT technologies in general. And to make sure everyone can jump on this awesome DevOps train, I write super detailed guides (seriously, they’re foolproof!) that help even newbies deploy and manage complex IT solutions.
 
-The `backups-outline` container in the configuration is responsible for the following:
+🚀 My dream is to empower every single person in the DevOps community to squeeze every last drop of potential out of Docker and container tech.
 
-1. **Application Data Backup**: Compresses and stores backups of the application data on the same schedule. Controlled via variables such as `OUTLINE_DATA_BACKUPS_PATH`, `OUTLINE_DATA_BACKUP_NAME`, and `OUTLINE_BACKUP_INTERVAL`.
+🐳 As a [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), I’m stoked to share my knowledge, experiences, and a good dose of passion for the tech. My aim is to encourage learning, innovation, and growth, and to inspire the next generation of IT whizz-kids to push Docker and container tech to its limits.
 
-2. **Backup Pruning**: Periodically removes backups exceeding a specified age to manage storage. Customizable pruning schedule and age threshold with `OUTLINE_DATA_BACKUP_PRUNE_DAYS`.
+Let’s do this together!
 
-By utilizing these containers, consistent and automated backups of the essential components of your instance are ensured. Moreover, efficient management of backup storage and tailored backup routines can be achieved through easy and flexible configuration using environment variables.
+## My 2D Portfolio
 
-# keycloak-restore-database.sh Description
+🕹️ Click into [sre.gg](https://www.sre.gg/) — my virtual space is a 2D pixel-art portfolio inviting you to interact with elements that encapsulate the milestones of my DevOps career.
 
-This script facilitates the restoration of a database backup:
+## My Courses
 
-1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
+🎓 Dive into my [comprehensive IT courses](https://www.heyvaldemar.com/courses/) designed for enthusiasts and professionals alike. Whether you're looking to master Docker, conquer Kubernetes, or advance your DevOps skills, my courses provide a structured pathway to enhancing your technical prowess.
 
-2. **List Backups**: Displays all available database backups located at the specified backup path.
+🔑 [Each course](https://www.udemy.com/user/heyvaldemar/) is built from the ground up with real-world scenarios in mind, ensuring that you gain practical knowledge and hands-on experience. From beginners to seasoned professionals, there's something here for everyone to elevate their IT skills.
 
-3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
+## My Services
 
-4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
+💼 Take a look at my [service catalog](https://www.heyvaldemar.com/services/) and find out how we can make your technological life better. Whether it's increasing the efficiency of your IT infrastructure, advancing your career, or expanding your technological horizons — I'm here to help you achieve your goals. From DevOps transformations to building gaming computers — let's make your technology unparalleled!
 
-5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
+## Patreon Exclusives
 
-6. **Start Service**: Restarts the service after the restoration is completed.
+🏆 Join my [Patreon](https://www.patreon.com/heyvaldemar) and dive deep into the world of Docker and DevOps with exclusive content tailored for IT enthusiasts and professionals. As your experienced guide, I offer a range of membership tiers designed to suit everyone from newbies to IT experts.
 
-To make the `keycloak-restore-database.shh` script executable, run the following command:
+## My Recommendations
 
-`chmod +x keycloak-restore-database.sh`
+📕 Check out my collection of [essential DevOps books](https://kit.co/heyvaldemar/essential-devops-books)\
+🖥️ Check out my [studio streaming and recording kit](https://kit.co/heyvaldemar/my-studio-streaming-and-recording-kit)\
+📡 Check out my [streaming starter kit](https://kit.co/heyvaldemar/streaming-starter-kit)
 
-Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
+## Follow Me
 
-# outline-restore-database.sh Description
+🎬 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
+🐦 [X / Twitter](https://twitter.com/heyvaldemar)\
+🎨 [Instagram](https://www.instagram.com/heyvaldemar/)\
+🐘 [Mastodon](https://mastodon.social/@heyvaldemar)\
+🧵 [Threads](https://www.threads.net/@heyvaldemar)\
+🎸 [Facebook](https://www.facebook.com/heyvaldemarFB/)\
+🧊 [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
+🎥 [TikTok](https://www.tiktok.com/@heyvaldemar)\
+💻 [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
+📣 [daily.dev Squad](https://app.daily.dev/squads/devopscompass)\
+🧩 [LeetCode](https://leetcode.com/u/heyvaldemar/)\
+🐈 [GitHub](https://github.com/heyvaldemar)
 
-This script facilitates the restoration of a database backup:
+## Community of IT Experts
 
-1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
+👾 [Discord](https://discord.gg/AJQGCCBcqf)
 
-2. **List Backups**: Displays all available database backups located at the specified backup path.
+## Refill My Coffee Supplies
 
-3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
+💖 [PayPal](https://www.paypal.com/paypalme/heyvaldemarCOM)\
+🏆 [Patreon](https://www.patreon.com/heyvaldemar)\
+💎 [GitHub](https://github.com/sponsors/heyvaldemar)\
+🥤 [BuyMeaCoffee](https://www.buymeacoffee.com/heyvaldemar)\
+🍪 [Ko-fi](https://ko-fi.com/heyvaldemar)
 
-4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
+🌟 **Bitcoin (BTC):** bc1q2fq0k2lvdythdrj4ep20metjwnjuf7wccpckxc\
+🔹 **Ethereum (ETH):** 0x76C936F9366Fad39769CA5285b0Af1d975adacB8\
+🪙 **Binance Coin (BNB):** bnb1xnn6gg63lr2dgufngfr0lkq39kz8qltjt2v2g6\
+💠 **Litecoin (LTC):** LMGrhx8Jsx73h1pWY9FE8GB46nBytjvz8g
 
-5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
+<div align="center">
 
-6. **Start Service**: Restarts the service after the restoration is completed.
+### Show some 💜 by starring some of the [repositories](https://github.com/heyValdemar?tab=repositories)!
 
-To make the `outline-restore-database.shh` script executable, run the following command:
+![octocat](https://user-images.githubusercontent.com/10498744/210113490-e2fad07f-4488-4da8-a656-b9abbdd8cb26.gif)
 
-`chmod +x outline-restore-database.sh`
+</div>
 
-Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
-
-# outline-restore-application-data.sh Description
-
-This script is designed to restore the application data:
-
-1. **Identify Containers**: Similarly to the database restore script, it identifies the service and backups containers by name.
-
-2. **List Application Data Backups**: Displays all available application data backups at the specified backup path.
-
-3. **Select Backup**: Asks the user to copy and paste the desired backup name for application data restoration.
-
-4. **Stop Service**: Stops the service to prevent any conflicts during the restore process.
-
-5. **Restore Application Data**: Removes the current application data and then extracts the selected backup to the appropriate application data path.
-
-6. **Start Service**: Restarts the service after the application data has been successfully restored.
-
-To make the `outline-restore-application-data.sh` script executable, run the following command:
-
-`chmod +x outline-restore-application-data.sh`
-
-By utilizing this script, you can efficiently restore application data from an existing backup while ensuring proper coordination with the running service.
-
-# Author
-
-I’m Vladimir Mikhalev, the [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), but my friends can call me Valdemar.
-
-🌐 My [website](https://www.heyvaldemar.com/) with detailed IT guides\
-🎬 Follow me on [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
-🐦 Follow me on [Twitter](https://twitter.com/heyValdemar)\
-🎨 Follow me on [Instagram](https://www.instagram.com/heyvaldemar/)\
-🧵 Follow me on [Threads](https://www.threads.net/@heyvaldemar)\
-🐘 Follow me on [Mastodon](https://mastodon.social/@heyvaldemar)\
-🧊 Follow me on [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
-🎸 Follow me on [Facebook](https://www.facebook.com/heyValdemarFB/)\
-🎥 Follow me on [TikTok](https://www.tiktok.com/@heyvaldemar)\
-💻 Follow me on [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
-🐈 Follow me on [GitHub](https://github.com/heyvaldemar)
-
-# Communication
-
-👾 Chat with IT pros on [Discord](https://discord.gg/AJQGCCBcqf)\
-📧 Reach me at ask@sre.gg
-
-# Give Thanks
-
-💎 Support on [GitHub](https://github.com/sponsors/heyValdemar)\
-🏆 Support on [Patreon](https://www.patreon.com/heyValdemar)\
-🥤 Support on [BuyMeaCoffee](https://www.buymeacoffee.com/heyValdemar)\
-🍪 Support on [Ko-fi](https://ko-fi.com/heyValdemar)\
-💖 Support on [PayPal](https://www.paypal.com/paypalme/heyValdemarCOM)
+![footer](https://user-images.githubusercontent.com/10498744/210157572-1fca0242-8af2-46a6-bfa3-666ffd40ebde.svg)
