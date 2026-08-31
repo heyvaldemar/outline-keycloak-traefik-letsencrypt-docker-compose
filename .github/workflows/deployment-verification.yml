@@ -1,0 +1,298 @@
+name: Deployment Verification
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly rebuild to catch upstream image drift.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: deployment-verification-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint shell scripts and workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ShellCheck
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            koalaman/shellcheck-alpine:stable \
+            shellcheck ./*.sh
+
+      - name: actionlint (GitHub Actions workflow linting)
+        run: |
+          docker run --rm -v "$PWD:/mnt" -w /mnt \
+            rhysd/actionlint:1.7.12 \
+            -color
+
+  scan-trivy:
+    name: Scan pinned upstream image with Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Findings surface in the Security tab for triage; they don't block CI.
+    continue-on-error: true
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      # Image refs are read from each compose file's x-images defaults at
+      # runtime — the compose files are the single source of truth.
+      fail-fast: false
+      matrix:
+        include:
+          - name: traefik
+            env_var: TRAEFIK_IMAGE_TAG
+            file: 01-traefik-outline-letsencrypt-docker-compose.yml
+          - name: postgres
+            env_var: KEYCLOAK_POSTGRES_IMAGE_TAG
+            file: 02-keycloak-outline-docker-compose.yml
+            skip_files: "usr/local/bin/gosu,/usr/local/bin/gosu,etc/ssl/private/ssl-cert-snakeoil.key,/etc/ssl/private/ssl-cert-snakeoil.key"
+          - name: keycloak
+            env_var: KEYCLOAK_IMAGE_TAG
+            file: 02-keycloak-outline-docker-compose.yml
+          - name: outline
+            env_var: OUTLINE_IMAGE_TAG
+            file: 03-outline-minio-redis-docker-compose.yml
+          - name: redis
+            env_var: OUTLINE_REDIS_IMAGE_TAG
+            file: 03-outline-minio-redis-docker-compose.yml
+          - name: minio
+            env_var: OUTLINE_MINIO_IMAGE_TAG
+            file: 03-outline-minio-redis-docker-compose.yml
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read pinned ${{ matrix.name }} image from ${{ matrix.file }}
+        id: pin
+        env:
+          ENV_VAR: ${{ matrix.env_var }}
+          PIN_FILE: ${{ matrix.file }}
+        run: |
+          image="$(grep -oE "\\\$\\{${ENV_VAR}:-[^}]+\\}" "$PIN_FILE" | head -1 | sed -E "s/^\\\$\\{${ENV_VAR}:-//; s/\\}$//")"
+          if [ -z "$image" ]; then
+            echo "${ENV_VAR} default not found in ${PIN_FILE}" >&2
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Trivy scan of ${{ matrix.name }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.pin.outputs.image }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          skip-files: ${{ matrix.skip_files }}
+
+      - name: Upload Trivy SARIF (${{ matrix.name }}) to GitHub Security
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-${{ matrix.name }}
+
+  check-pin-freshness:
+    name: Check pinned images for upstream drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Weekly cron + manual dispatch only: a new upstream release is not
+    # actionable inside an unrelated PR. On the cron the failure lands as a
+    # workflow-failure notification to the maintainer — a stale pin must
+    # not sit unnoticed. Dependabot cannot see these pins (they are compose
+    # interpolation defaults, not Dockerfile literals), so this job is the
+    # actual tracking mechanism.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare pinned digests against what each tag resolves to now
+        run: |
+          status=0
+          check_digest() {
+            var="$1"; file="$2"
+            pin="$(grep -oE "\\\$\\{${var}:-[^}]+\\}" "$file" | head -1 | sed -E "s/^\\\$\\{${var}:-//; s/\\}$//")"
+            ref="${pin%%@*}"
+            pinned_digest="${pin##*@}"
+            current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
+            if [ "$pinned_digest" != "$current_digest" ]; then
+              echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
+              status=1
+            else
+              echo "${var} OK (${ref})"
+            fi
+          }
+          check_digest TRAEFIK_IMAGE_TAG 01-traefik-outline-letsencrypt-docker-compose.yml
+          check_digest KEYCLOAK_POSTGRES_IMAGE_TAG 02-keycloak-outline-docker-compose.yml
+          check_digest KEYCLOAK_IMAGE_TAG 02-keycloak-outline-docker-compose.yml
+          check_digest OUTLINE_POSTGRES_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
+          check_digest OUTLINE_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
+          check_digest OUTLINE_REDIS_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
+          check_digest OUTLINE_MINIO_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
+          exit "$status"
+
+      - name: Compare pinned app versions against the latest releases
+        run: |
+          status=0
+          check_gh() {
+            var="$1"; file="$2"; gh_repo="$3"
+            pin="$(grep -oE "\\\$\\{${var}:-[^}]+\\}" "$file" | head -1 | sed -E "s/^\\\$\\{${var}:-//; s/\\}$//")"
+            ref="${pin%%@*}"
+            pinned_version="${ref##*:}"
+            latest="$(curl -fsSL --retry 3 "https://api.github.com/repos/${gh_repo}/releases/latest" | jq -r .tag_name)"
+            latest="${latest#v}"
+            if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+              echo "::error::Could not determine the latest ${gh_repo} release"
+              status=1
+            elif [ "$pinned_version" != "$latest" ]; then
+              echo "::error::${var} is behind: pinned ${pinned_version}, latest ${gh_repo} release is ${latest}"
+              status=1
+            else
+              echo "${var} ${pinned_version} matches the latest ${gh_repo} release"
+            fi
+          }
+          check_gh KEYCLOAK_IMAGE_TAG 02-keycloak-outline-docker-compose.yml keycloak/keycloak
+          check_gh OUTLINE_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml outline/outline
+          pin="$(grep -oE '\$\{TRAEFIK_IMAGE_TAG:-[^}]+\}' 01-traefik-outline-letsencrypt-docker-compose.yml | head -1 | sed -E 's/^\$\{TRAEFIK_IMAGE_TAG:-//; s/\}$//')"
+          ref="${pin%%@*}"; pinned_minor="${ref##*:}"
+          latest="$(curl -fsSL --retry 3 https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"; latest="${latest#v}"
+          case "$latest" in
+            "$pinned_minor".*) echo "Traefik pin ${pinned_minor} matches the latest release line (${latest})" ;;
+            *) echo "::error::Traefik pin is behind: pinned minor ${pinned_minor}, latest release is ${latest}"; status=1 ;;
+          esac
+          exit "$status"
+
+  deploy-and-test:
+    name: docker compose up x3 + Keycloak/MinIO/Outline smoke
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    env:
+      APP_HOSTNAME: outline.heyvaldemar.net
+      KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
+      MINIO_HOST: minio.outline.heyvaldemar.net
+      MINIO_CONSOLE_HOST: console.minio.outline.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.outline.heyvaldemar.net
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Create the Docker networks
+        run: |
+          docker network create traefik-network || true
+          docker network create keycloak-network || true
+          docker network create outline-network || true
+
+      - name: Generate test .env with ephemeral credentials
+        # No *_IMAGE_TAG values on purpose: the compose x-images defaults
+        # apply, so CI tests exactly the pins the template ships. The OIDC
+        # client secret is a placeholder — Outline boots and serves its
+        # login page without a live realm; a real deployment configures the
+        # realm per the README.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${KEYCLOAK_HOST}
+          OUTLINE_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_UTILS_SECRET=$(openssl rand -hex 32)
+          OUTLINE_MINIO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_USER_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_OIDC_CLIENT_SECRET=ci-placeholder-secret
+          OUTLINE_HOSTNAME=${APP_HOSTNAME}
+          OUTLINE_URL=https://${APP_HOSTNAME}
+          OUTLINE_MINIO_HOSTNAME=${MINIO_HOST}
+          OUTLINE_MINIO_CONSOLE_HOSTNAME=${MINIO_CONSOLE_HOST}
+          OUTLINE_MINIO_CONSOLE_URL=https://${MINIO_CONSOLE_HOST}
+          OUTLINE_OIDC_AUTH_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/auth
+          OUTLINE_OIDC_TOKEN_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/token
+          OUTLINE_OIDC_USERINFO_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/userinfo
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          for h in "$APP_HOSTNAME" "$KEYCLOAK_HOST" "$MINIO_HOST" "$MINIO_CONSOLE_HOST" "$APP_TRAEFIK_HOSTNAME"; do
+            echo "127.0.0.1 $h" | sudo tee -a /etc/hosts
+          done
+
+      - name: Start Traefik (file 01)
+        run: docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p outline up -d
+
+      - name: Start Keycloak (file 02)
+        run: docker compose -f 02-keycloak-outline-docker-compose.yml -p outline up -d
+
+      - name: Start Outline + MinIO + Redis (file 03)
+        run: docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d
+
+      - name: Wait for Keycloak to report healthy
+        run: |
+          # shellcheck disable=SC2016
+          timeout 10m bash -c 'until [ "$(docker inspect -f "{{.State.Health.Status}}" "$(docker ps -qf name=keycloak | head -1)")" = "healthy" ]; do
+            echo "Keycloak still starting..."
+            sleep 10
+          done'
+          echo "Keycloak healthy"
+
+      - name: Verify MinIO liveness through Traefik
+        run: |
+          # shellcheck disable=SC2016
+          timeout 5m bash -c 'while ! curl -fsk "https://$MINIO_HOST/minio/health/live" >/dev/null; do
+            echo "Waiting for MinIO..."
+            sleep 10
+          done'
+          echo "MinIO live"
+
+      - name: Verify Outline serves its login page through Traefik
+        # Outline boots and serves the login page (with the Keycloak
+        # provider button) without a live realm — this proves the whole
+        # chain: Traefik routing, Outline, Postgres, Redis, MinIO wiring.
+        run: |
+          # shellcheck disable=SC2016
+          timeout 10m bash -c 'while ! curl -skL "https://$APP_HOSTNAME/" -o /dev/null -w "%{http_code}" | grep -qE "200|302"; do
+            echo "Waiting for Outline..."
+            sleep 10
+          done'
+          curl -skL "https://$APP_HOSTNAME/" -o /dev/null -w "Outline front page: %{http_code}\n"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs
+          docker compose -f 02-keycloak-outline-docker-compose.yml -p outline logs
+
+      - name: Shutdown all stacks
+        if: always()
+        run: |
+          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline down
+          docker compose -f 02-keycloak-outline-docker-compose.yml -p outline down
+          docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p outline down

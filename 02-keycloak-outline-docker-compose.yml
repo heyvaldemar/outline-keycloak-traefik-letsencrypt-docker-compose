@@ -1,3 +1,14 @@
+# Image pins live HERE, as interpolation defaults, so `git pull` (or
+# re-downloading this file) delivers the exact version combination this
+# repository has tested — no .env editing required. Setting the matching
+# variable in .env overrides the default for anyone who wants to pin
+# differently; .env itself carries only secrets and deliberate overrides.
+# CI (Trivy scans, check-pin-freshness, the ephemeral test .env) reads
+# the pins from these lines — this block is the single source of truth.
+x-images:
+  kc-postgres: &kc-postgres-image ${KEYCLOAK_POSTGRES_IMAGE_TAG:-postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}
+  keycloak: &keycloak-image ${KEYCLOAK_IMAGE_TAG:-quay.io/keycloak/keycloak:26.7.3@sha256:ff4257d0d64efbe99ed1ddfaf07765cc3c36dc7518bf8324d41961327f441c54}
+
 networks:
   outline-network:
     external: true
@@ -13,17 +24,17 @@ volumes:
 
 services:
   postgres-keycloak:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    image: *kc-postgres-image
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: ${KEYCLOAK_DB_NAME}
-      POSTGRES_USER: ${KEYCLOAK_DB_USER}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloakdb}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloakdbuser}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?set in .env - see .env.example for generation command}
     networks:
       - keycloak-network
     healthcheck:
-      test: [ "CMD", "pg_isready", "-q", "-d", "${KEYCLOAK_DB_NAME}", "-U", "${KEYCLOAK_DB_USER}" ]
+      test: [ "CMD", "pg_isready", "-q", "-d", "${KEYCLOAK_DB_NAME:-keycloakdb}", "-U", "${KEYCLOAK_DB_USER:-keycloakdbuser}" ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -31,19 +42,19 @@ services:
     restart: unless-stopped
 
   keycloak:
-    image: ${KEYCLOAK_IMAGE_TAG}
+    image: *keycloak-image
     command: start
     environment:
       KC_DB: postgres
       KC_DB_URL_HOST: postgres-keycloak
-      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloakdb}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloakdbuser}
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       KC_DB_SCHEMA: public
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USERNAME}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-keycloakadmin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set in .env - see .env.example for generation command}
       KC_HEALTH_ENABLED: 'true'
-      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME:?set in .env - see .env.example}
       KC_HTTP_ENABLED: 'true'
       KC_PROXY_HEADERS: 'xforwarded'
       PROXY_ADDRESS_FORWARDING: 'true'
@@ -90,25 +101,25 @@ services:
         condition: service_healthy
 
   backups-keycloak:
-    image: ${KEYCLOAK_POSTGRES_IMAGE_TAG}
+    image: *kc-postgres-image
     command: >-
-      sh -c 'sleep $KEYCLOAK_BACKUP_INIT_SLEEP &&
+      sh -c 'sleep $$KEYCLOAK_BACKUP_INIT_SLEEP &&
       while true; do
-        pg_dump -h postgres-keycloak -p 5432 -d $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER | gzip > $KEYCLOAK_POSTGRES_BACKUPS_PATH/$KEYCLOAK_POSTGRES_BACKUP_NAME-$(date "+%Y-%m-%d_%H-%M").gz &&
-        find $KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        sleep $KEYCLOAK_BACKUP_INTERVAL; done'
+        pg_dump -h postgres-keycloak -p 5432 -d $$KEYCLOAK_DB_NAME -U $$KEYCLOAK_DB_USER | gzip > $$KEYCLOAK_POSTGRES_BACKUPS_PATH/$$KEYCLOAK_POSTGRES_BACKUP_NAME-$$(date "+%Y-%m-%d_%H-%M").gz &&
+        find $$KEYCLOAK_POSTGRES_BACKUPS_PATH -type f -mtime +$$KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
+        sleep $$KEYCLOAK_BACKUP_INTERVAL; done'
     volumes:
       - keycloak-postgres-backup:/var/lib/postgresql/data
-      - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH}
+      - keycloak-database-backups:${KEYCLOAK_POSTGRES_BACKUPS_PATH:-/srv/keycloak-postgres/backups}
     environment:
-      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME}
-      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER}
+      KEYCLOAK_DB_NAME: ${KEYCLOAK_DB_NAME:-keycloakdb}
+      KEYCLOAK_DB_USER: ${KEYCLOAK_DB_USER:-keycloakdbuser}
       PGPASSWORD: ${KEYCLOAK_DB_PASSWORD}
-      KEYCLOAK_BACKUP_INIT_SLEEP: ${KEYCLOAK_BACKUP_INIT_SLEEP}
-      KEYCLOAK_BACKUP_INTERVAL: ${KEYCLOAK_BACKUP_INTERVAL}
-      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: ${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS}
-      KEYCLOAK_POSTGRES_BACKUPS_PATH: ${KEYCLOAK_POSTGRES_BACKUPS_PATH}
-      KEYCLOAK_POSTGRES_BACKUP_NAME: ${KEYCLOAK_POSTGRES_BACKUP_NAME}
+      KEYCLOAK_BACKUP_INIT_SLEEP: ${KEYCLOAK_BACKUP_INIT_SLEEP:-30m}
+      KEYCLOAK_BACKUP_INTERVAL: ${KEYCLOAK_BACKUP_INTERVAL:-24h}
+      KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS: ${KEYCLOAK_POSTGRES_BACKUP_PRUNE_DAYS:-7}
+      KEYCLOAK_POSTGRES_BACKUPS_PATH: ${KEYCLOAK_POSTGRES_BACKUPS_PATH:-/srv/keycloak-postgres/backups}
+      KEYCLOAK_POSTGRES_BACKUP_NAME: ${KEYCLOAK_POSTGRES_BACKUP_NAME:-keycloak-postgres-backup}
     networks:
       - keycloak-network
     restart: unless-stopped

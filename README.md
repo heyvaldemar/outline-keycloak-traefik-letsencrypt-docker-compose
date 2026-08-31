@@ -1,143 +1,170 @@
-# Outline with Keycloak and Let's Encrypt Using Docker Compose
+# Outline + Keycloak + Traefik + Let's Encrypt — Docker Compose
 
-📙 The complete installation guide is available on my [website](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
+[![Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-❗ Change variables in the `.env` to meet your requirements.
+## Contents
 
-💡 Note that the `.env` file should be in the same directory as `01-traefik-outline-letsencrypt-docker-compose.yml`, `02-keycloak-outline-docker-compose.yml`, and `03-outline-minio-redis-docker-compose.yml`.
+- [Why this stack?](#why-this-stack)
+- [Prerequisites](#prerequisites)
+- [Getting started](#getting-started)
+- [Configuring the Keycloak realm for Outline](#configuring-the-keycloak-realm-for-outline)
+- [Features](#features)
+- [Supply chain trust](#supply-chain-trust)
+- [Production checklist](#production-checklist)
+- [Backups](#backups)
+- [Testing](#testing)
+- [Security Notes](#security-notes)
+- [About the maintainer](#about-the-maintainer)
 
-❗ The value for the `OUTLINE_OIDC_CLIENT_SECRET` variable can be obtained after installing Keycloak using `02-keycloak-outline-docker-compose.yml`.
+This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC identity provider, **MinIO** for file storage, **PostgreSQL** ×2 and **Redis**, all behind **Traefik** with automatic **Let's Encrypt TLS** — three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
 
-❗ Additionally, you need to specify your values for `OUTLINE_SECRET_KEY` and `OUTLINE_UTILS_SECRET`.
+📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-using-docker-compose/](https://www.heyvaldemar.com/install-outline-using-docker-compose/).
 
-The values for `OUTLINE_SECRET_KEY` and `OUTLINE_UTILS_SECRET` can be generated using the command:
+## Why this stack?
 
-`openssl rand -hex 32`
+| Need | This stack | Outline's own compose | Manual assembly |
+|------|-----------|----------------------|-----------------|
+| Real SSO out of the box | ✅ Keycloak OIDC | ❌ bring your own IdP | Hours of wiring |
+| TLS via Let's Encrypt, auto-renewed | ✅ Traefik ACME | ❌ | Manual certbot |
+| S3-compatible file storage included | ✅ MinIO | ❌ external S3 | Separate setup |
+| Scheduled backups (2 DBs + files) + restore scripts | ✅ | ❌ | Manual cron |
+| All images pinned by `sha256` digest | ✅ 7 pins | ❌ floating | Rare |
+| Weekly pin-freshness check in CI | ✅ | ❌ | Rare |
+| CI-verified deployment on every push | ✅ 3 stacks booted | ❌ | Rare |
 
-Create networks for your services before deploying the configuration using the commands:
+Nine services across three compose files, deployed in strict order. Heavier than a single-app template — this is a complete platform.
 
-`docker network create traefik-network`
+## Prerequisites
 
-`docker network create keycloak-network`
+- **A Linux server** with a public IP and **~4 GB free RAM** for the full stack.
+- **Docker Engine 24+ and Docker Compose 2.20+.**
+- **A domain you control,** with **five** `A` records pointing at your server's public IP: Outline, Keycloak, MinIO S3, MinIO console, and the Traefik dashboard (see `.env.example`). DNS must propagate before deploy.
+- **Ports 80 and 443 open** on the server's firewall.
 
-`docker network create outline-network`
+## Getting started
 
-Deploy Traefik using Docker Compose:
+```bash
+# 1. Clone
+git clone https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose
+cd outline-keycloak-traefik-letsencrypt-docker-compose
 
-`docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p traefik up -d`
+# 2. Create the three Docker networks the stacks expect
+docker network create traefik-network
+docker network create keycloak-network
+docker network create outline-network
 
-Deploy Keycloak using Docker Compose:
+# 3. Copy the environment template and fill in required values
+cp .env.example .env
+$EDITOR .env
+# ^ See .env.example — hostnames, passwords, Outline secrets, and the
+#   OIDC endpoints (the client secret arrives in the realm step below).
 
-`docker compose -f 02-keycloak-outline-docker-compose.yml -p keycloak up -d`
+# 4. Deploy in order
+docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p outline up -d
+docker compose -f 02-keycloak-outline-docker-compose.yml -p outline up -d
+docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d
+```
 
-Create a new `Realm` on Keycloak and name it `outline` (case sensitive).
+Keycloak, MinIO, and Outline come up with fresh Let's Encrypt certificates. Outline's login page appears immediately; signing in works after the realm step below.
 
-Create a `Client` in the new realm and configure it:
+## Configuring the Keycloak realm for Outline
 
-1. Client type: `OpenID Connect`
-2. Client ID: `outline` (case sensitive)
-3. Client authentication: `on`
-4. Authentication flow: uncheck all other options and leave only `Standard flow`
-5. Set URLs:
+1. Log in to `https://${KEYCLOAK_HOSTNAME}` with `KEYCLOAK_ADMIN_USERNAME` / `KEYCLOAK_ADMIN_PASSWORD`.
+2. Create a realm named `outline`.
+3. In the realm, create a client `outline`: client type OpenID Connect, client authentication ON, valid redirect URI `https://${OUTLINE_HOSTNAME}/auth/oidc.callback`.
+4. Copy the client secret (client → Credentials) into `OUTLINE_OIDC_CLIENT_SECRET` in `.env`.
+5. Create your users in the realm (email required — Outline maps accounts by the email claim).
+6. Recreate Outline: `docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d --force-recreate`.
 
-- In the `Root URL` field, enter `https://outline.heyvaldemar.net/`
-- In the `Home URL` field, enter `https://outline.heyvaldemar.net/`
-- In the `Valid redirect URIs` field, enter `https://outline.heyvaldemar.net/*`
+Sign in on Outline via the Keycloak button — first user in becomes the workspace admin.
 
-💡 Please note, outline.heyvaldemar.net is the domain name of my service. Accordingly, you need to specify your domain name, which points to the IP address of your server with the installed Traefik service, which will redirect the request to Outline.
+### What success looks like
 
-Get a `Client secret` value on the `Credentials` tab of the `Client` that you created.
+```bash
+# All nine services healthy / up:
+docker ps --filter name=outline
 
-Specify the `OUTLINE_OIDC_CLIENT_SECRET` variable in the `.env`.
+# Keycloak health:
+docker inspect -f '{{.State.Health.Status}}' "$(docker ps -qf name=keycloak | head -1)"
 
-Create a user on Keycloak for Outline.
+# MinIO liveness through Traefik:
+curl -fsS "https://${OUTLINE_MINIO_HOSTNAME}/minio/health/live" -o /dev/null -w "%{http_code}\n"
 
-Note that you have to specify an email address and a username.
+# Outline front page:
+curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
+```
 
-Set a password for the new user.
+### Common first-deploy issues
 
-Deploy Keycloak using Docker Compose:
+- **Cert issuance fails.** One of the five DNS records hasn't propagated, or port 80 isn't reachable.
+- **`docker compose up` fails with `set in .env`.** A required variable is empty; the error names it.
+- **Networks not found.** Step 2 was skipped — all three networks are required.
+- **OIDC error on login.** Realm/client mismatch: verify the redirect URI, the client secret, and that the three `OUTLINE_OIDC_*_URI` values use your Keycloak hostname and the `outline` realm.
 
-`docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d`
+## Features
 
-Log in to Outline with the Username or Email specified on the Keycloak.
+- **Outline** latest stable (1.9 line) — documents, collections, search, real-time collaboration.
+- **Keycloak 26.7** as the OIDC provider — users, groups, MFA, federation if you need it.
+- **MinIO** S3-compatible storage for uploads, with its own console.
+- **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and **Redis 7.4**.
+- **Traefik v3** with automatic HTTPS for all five hostnames.
+- **Scheduled backups**: both databases (`pg_dump | gzip`) and MinIO data (`tar.gz`), with retention pruning and three restore scripts.
+- **Credentials required at deploy time** — compose fails fast if `.env` is incomplete.
 
-## Author
+## Supply chain trust
 
-hey everyone,
+This repository is a **deployment template**. Seven images across three compose files, each pinned to `tag@sha256:<digest>` as interpolation defaults in that file's `x-images` block — `git pull` alone delivers the version combination this repository has tested; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
-💾 I’ve been in the IT game for over 20 years, cutting my teeth with some big names like [IBM](https://www.linkedin.com/in/heyvaldemar/), [Thales](https://www.linkedin.com/in/heyvaldemar/), and [Amazon](https://www.linkedin.com/in/heyvaldemar/). These days, I wear the hat of a DevOps Consultant and Team Lead, but what really gets me going is Docker and container technology - I’m kind of obsessed!
+- [`traefik`](https://hub.docker.com/_/traefik), [`postgres`](https://hub.docker.com/_/postgres) ×2, [`redis`](https://hub.docker.com/_/redis) — Docker Hub official images
+- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak) — Keycloak upstream
+- [`outlinewiki/outline`](https://hub.docker.com/r/outlinewiki/outline) — Outline upstream
+- [`minio/minio`](https://hub.docker.com/r/minio/minio) — MinIO upstream
 
-💛 I have my own IT [blog](https://www.heyvaldemar.com/), where I’ve built a [community](https://discord.gg/AJQGCCBcqf) of DevOps enthusiasts who share my love for all things Docker, containers, and IT technologies in general. And to make sure everyone can jump on this awesome DevOps train, I write super detailed guides (seriously, they’re foolproof!) that help even newbies deploy and manage complex IT solutions.
+The weekly `check-pin-freshness` CI job re-resolves all seven pins against their registries and compares the pinned Keycloak, Outline, and Traefik versions against the latest upstream releases. CI runs on every push, pull request, and every Monday at 06:00 UTC. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
-🚀 My dream is to empower every single person in the DevOps community to squeeze every last drop of potential out of Docker and container tech.
+## Production checklist
 
-🐳 As a [Docker Captain](https://www.docker.com/captains/vladimir-mikhalev/), I’m stoked to share my knowledge, experiences, and a good dose of passion for the tech. My aim is to encourage learning, innovation, and growth, and to inspire the next generation of IT whizz-kids to push Docker and container tech to its limits.
+- [ ] **Strong secrets everywhere** — six generated passwords/secrets in `.env`; regenerate the Traefik dashboard hash per deployment.
+- [ ] **Complete the realm step** and disable Keycloak's bootstrap admin after creating named admins.
+- [ ] **Restrict MinIO console exposure** if you don't need it publicly.
+- [ ] **Host-mount the backup volumes** for disaster recovery.
+- [ ] **Verify Let's Encrypt certs** for all five hostnames in the Traefik logs.
+- [ ] **Back up before upgrades** — Keycloak and Outline both migrate schemas forward only.
+- [ ] **Know the restore procedure.** Three scripts: Keycloak DB, Outline DB, MinIO data.
 
-Let’s do this together!
+## Backups
 
-## My 2D Portfolio
+Two backup sidecars run dump → prune → sleep loops: one for the Keycloak database, one for the Outline database + MinIO data directory. All knobs configured via `.env` with compose-level defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
-🕹️ Click into [sre.gg](https://www.sre.gg/) — my virtual space is a 2D pixel-art portfolio inviting you to interact with elements that encapsulate the milestones of my DevOps career.
+**Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`.
 
-## My Courses
+## Testing
 
-🎓 Dive into my [comprehensive IT courses](https://www.heyvaldemar.com/courses/) designed for enthusiasts and professionals alike. Whether you're looking to master Docker, conquer Kubernetes, or advance your DevOps skills, my courses provide a structured pathway to enhancing your technical prowess.
+The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every Monday at 06:00 UTC:
 
-🔑 [Each course](https://www.udemy.com/user/heyvaldemar/) is built from the ground up with real-world scenarios in mind, ensuring that you gain practical knowledge and hands-on experience. From beginners to seasoned professionals, there's something here for everyone to elevate their IT skills.
+1. **Lint** — shellcheck on all three restore scripts, actionlint on the workflow.
+2. **Trivy scans** of six unique pinned images (CRITICAL/HIGH, SARIF to the Security tab).
+3. **Pin freshness** (weekly/manual) — digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
+4. **Deploy-and-test** — boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, MinIO liveness through Traefik, and the Outline login page through Traefik.
 
-## My Services
+A green run is the authoritative proof that the template deploys end-to-end.
 
-💼 Take a look at my [service catalog](https://www.heyvaldemar.com/services/) and find out how we can make your technological life better. Whether it's increasing the efficiency of your IT infrastructure, advancing your career, or expanding your technological horizons — I'm here to help you achieve your goals. From DevOps transformations to building gaming computers — let's make your technology unparalleled!
+## Security Notes
 
-## Patreon Exclusives
+- Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
+- **Pre-rotation advisory.** Releases before v1.0.0 (2026-08-31) shipped a tracked `.env` with generated-looking passwords for Keycloak, Outline, and MinIO. Rotate all of them if your deployment reused them.
+- Databases and Redis listen only on internal networks.
+- Upstream image digests are pinned; the weekly freshness job flags drift loudly.
 
-🏆 Join my [Patreon](https://www.patreon.com/heyvaldemar) and dive deep into the world of Docker and DevOps with exclusive content tailored for IT enthusiasts and professionals. As your experienced guide, I offer a range of membership tiers designed to suit everyone from newbies to IT experts.
+---
 
-## My Recommendations
-
-📕 Check out my collection of [essential DevOps books](https://kit.co/heyvaldemar/essential-devops-books)\
-🖥️ Check out my [studio streaming and recording kit](https://kit.co/heyvaldemar/my-studio-streaming-and-recording-kit)\
-📡 Check out my [streaming starter kit](https://kit.co/heyvaldemar/streaming-starter-kit)
-
-## Follow Me
-
-🎬 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1)\
-🐦 [X / Twitter](https://twitter.com/heyvaldemar)\
-🎨 [Instagram](https://www.instagram.com/heyvaldemar/)\
-🐘 [Mastodon](https://mastodon.social/@heyvaldemar)\
-🧵 [Threads](https://www.threads.net/@heyvaldemar)\
-🎸 [Facebook](https://www.facebook.com/heyvaldemarFB/)\
-🧊 [Bluesky](https://bsky.app/profile/heyvaldemar.bsky.social)\
-🎥 [TikTok](https://www.tiktok.com/@heyvaldemar)\
-💻 [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)\
-📣 [daily.dev Squad](https://app.daily.dev/squads/devopscompass)\
-🧩 [LeetCode](https://leetcode.com/u/heyvaldemar/)\
-🐈 [GitHub](https://github.com/heyvaldemar)
-
-## Community of IT Experts
-
-👾 [Discord](https://discord.gg/AJQGCCBcqf)
-
-## Refill My Coffee Supplies
-
-💖 [PayPal](https://www.paypal.com/paypalme/heyvaldemarCOM)\
-🏆 [Patreon](https://www.patreon.com/heyvaldemar)\
-💎 [GitHub](https://github.com/sponsors/heyvaldemar)\
-🥤 [BuyMeaCoffee](https://www.buymeacoffee.com/heyvaldemar)\
-🍪 [Ko-fi](https://ko-fi.com/heyvaldemar)
-
-🌟 **Bitcoin (BTC):** bc1q2fq0k2lvdythdrj4ep20metjwnjuf7wccpckxc\
-🔹 **Ethereum (ETH):** 0x76C936F9366Fad39769CA5285b0Af1d975adacB8\
-🪙 **Binance Coin (BNB):** bnb1xnn6gg63lr2dgufngfr0lkq39kz8qltjt2v2g6\
-💠 **Litecoin (LTC):** LMGrhx8Jsx73h1pWY9FE8GB46nBytjvz8g
+## About the maintainer
 
 <div align="center">
 
-### Show some 💜 by starring some of the [repositories](https://github.com/heyValdemar?tab=repositories)!
+**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** — Docker Captain · IBM Champion · AWS Community Builder
 
-![octocat](https://user-images.githubusercontent.com/10498744/210113490-e2fad07f-4488-4da8-a656-b9abbdd8cb26.gif)
+[YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1) · [Blog](https://heyvaldemar.com) · [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)
 
 </div>
-
-![footer](https://user-images.githubusercontent.com/10498744/210157572-1fca0242-8af2-46a6-bfa3-666ffd40ebde.svg)
