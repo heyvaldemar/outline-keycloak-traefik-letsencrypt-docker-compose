@@ -19,7 +19,7 @@
 
 This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC identity provider, **MinIO** for file storage, **PostgreSQL** ×2 and **Redis**, all behind **Traefik** with automatic **Let's Encrypt TLS** — three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
 
-📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-using-docker-compose/](https://www.heyvaldemar.com/install-outline-using-docker-compose/).
+📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
 
 ## Why this stack?
 
