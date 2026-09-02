@@ -307,13 +307,38 @@ services:
           memory: ${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_MEMORY_RESERVATION:-32m}
           cpus: "${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_CPU_RESERVATION:-0.1}"
     command: >-
-      sh -c 'sleep $$OUTLINE_BACKUP_INIT_SLEEP &&
+      bash -c 'set -o pipefail;
+      sleep "$$OUTLINE_BACKUP_INIT_SLEEP";
       while true; do
-        pg_dump -h postgres-outline -p 5432 -d $$OUTLINE_DB_NAME -U $$OUTLINE_DB_USER | gzip > $$OUTLINE_POSTGRES_BACKUPS_PATH/$$OUTLINE_POSTGRES_BACKUP_NAME-$$(date "+%Y-%m-%d_%H-%M").gz &&
-        tar -zcpf $$OUTLINE_DATA_BACKUPS_PATH/$$OUTLINE_DATA_BACKUP_NAME-$$(date "+%Y-%m-%d_%H-%M").tar.gz $$OUTLINE_DATA_PATH &&
-        find $$OUTLINE_POSTGRES_BACKUPS_PATH -type f -mtime +$$OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS | xargs rm -f &&
-        find $$OUTLINE_DATA_BACKUPS_PATH -type f -mtime +$$OUTLINE_DATA_BACKUP_PRUNE_DAYS | xargs rm -f;
-        sleep $$OUTLINE_BACKUP_INTERVAL; done'
+        STAMP="$$(date +%Y-%m-%d_%H-%M)";
+        DB_FILE="$$OUTLINE_POSTGRES_BACKUPS_PATH/$$OUTLINE_POSTGRES_BACKUP_NAME-$$STAMP.gz";
+        echo "[$$(date -Iseconds)] Starting database backup to $$DB_FILE";
+        if pg_dump -h postgres-outline -p 5432 -d $$OUTLINE_DB_NAME -U $$OUTLINE_DB_USER | gzip > "$$DB_FILE"; then
+          echo "[$$(date -Iseconds)] Database backup OK: $$DB_FILE ($$(stat -c %s "$$DB_FILE") bytes)";
+        else
+          echo "[$$(date -Iseconds)] Database backup FAILED - partial file kept as $$DB_FILE.failed for diagnosis" >&2;
+          mv "$$DB_FILE" "$$DB_FILE.failed" 2>/dev/null || true;
+        fi;
+        DATA_FILE="$$OUTLINE_DATA_BACKUPS_PATH/$$OUTLINE_DATA_BACKUP_NAME-$$STAMP.tar.gz";
+        echo "[$$(date -Iseconds)] Starting data backup to $$DATA_FILE";
+        # GNU tar exits 1 when a live application changed a file mid-read;
+        # the archive is complete - only exit 2 is a real failure. No GNU-only
+        # flags: alpine images ship BusyBox tar.
+        tar -zcpf "$$DATA_FILE" $$OUTLINE_DATA_PATH; RC=$$?;
+        if [ "$$RC" -eq 0 ] || [ "$$RC" -eq 1 ]; then
+          echo "[$$(date -Iseconds)] Data backup OK: $$DATA_FILE ($$(stat -c %s "$$DATA_FILE") bytes)$$([ "$$RC" -eq 1 ] && echo " - some files changed while being read")";
+        else
+          echo "[$$(date -Iseconds)] Data backup FAILED - partial file kept as $$DATA_FILE.failed for diagnosis" >&2;
+          mv "$$DATA_FILE" "$$DATA_FILE.failed" 2>/dev/null || true;
+        fi;
+        if [ "$${OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$OUTLINE_POSTGRES_BACKUPS_PATH" -type f -name "$$OUTLINE_POSTGRES_BACKUP_NAME-*" -mtime "+$$OUTLINE_POSTGRES_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        if [ "$${OUTLINE_DATA_BACKUP_PRUNE_DAYS:-0}" -ge 1 ]; then
+          find "$$OUTLINE_DATA_BACKUPS_PATH" -type f -name "$$OUTLINE_DATA_BACKUP_NAME-*" -mtime "+$$OUTLINE_DATA_BACKUP_PRUNE_DAYS" -delete;
+        fi;
+        sleep "$$OUTLINE_BACKUP_INTERVAL";
+      done'
     volumes:
       - outline-postgres-backup:/var/lib/postgresql/data
       - minio-data:${OUTLINE_DATA_PATH:-/data}

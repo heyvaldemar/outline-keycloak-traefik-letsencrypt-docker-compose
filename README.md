@@ -137,6 +137,8 @@ The weekly `check-pin-freshness` CI job re-resolves all seven pins against their
 
 Two backup sidecars run dump → prune → sleep loops: one for the Keycloak database, one for the Outline database + MinIO data directory. All knobs configured via `.env` with compose-level defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
+Each cycle logs `Database backup OK: <file> (<bytes> bytes)` or `Database backup FAILED` (the same for the data archive where there is one). A failed dump is kept as `<file>.failed` for diagnosis and never overwrites a good backup — grep the log for `FAILED` from your monitoring.
+
 **Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`.
 
 ## Unattended updates

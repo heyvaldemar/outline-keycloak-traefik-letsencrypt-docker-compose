@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.3.0] - 2026-09-02
+
+### Fixed
+
+- **A failed database dump no longer produces a silent, corrupt backup.**
+  Both backup loops (Keycloak and Outline databases) had the flaw: the old loop piped the dump into `gzip` and only checked `gzip`'s exit
+  status, so a dump that failed halfway (database down, wrong password,
+  disk full) still left a small `.gz` that looked like a backup. The loop
+  now runs with `pipefail`, logs `Database backup OK: <file> (<bytes>
+  bytes)` or `Database backup FAILED` per cycle, keeps a failed dump as
+  `<file>.failed` for diagnosis, and prunes only its own files. Retention
+  set to `0` disables pruning instead of deleting everything.
+
+### Added
+
+- CI now waits for the first backup cycle and proves the produced
+  archive is readable and contains a real dump header (plus a readable
+  `tar.gz` for the data backup where the stack has one).
+
 ## [1.2.0] - 2026-09-02
 
 ### Added
@@ -81,7 +100,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0
