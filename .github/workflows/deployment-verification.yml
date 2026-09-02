@@ -298,27 +298,27 @@ jobs:
         # definition, so this never races a dump that is still being written.
         run: |
           # shellcheck disable=SC2016
-          timeout 6m bash -c 'until docker compose -f 02-keycloak-outline-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-keycloak 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
-          db=$(docker compose -f 02-keycloak-outline-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-keycloak 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
+          timeout 6m bash -c 'until docker compose -f 02-keycloak-outline-docker-compose.yml -p outline logs backups-keycloak 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
+          db=$(docker compose -f 02-keycloak-outline-docker-compose.yml -p outline logs backups-keycloak 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
           echo "Database backup file: $db"
-          docker compose -f 02-keycloak-outline-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" exec -T backups-keycloak sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
-          docker compose -f 02-keycloak-outline-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-keycloak 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+          docker compose -f 02-keycloak-outline-docker-compose.yml -p outline exec -T backups-keycloak sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
+          docker compose -f 02-keycloak-outline-docker-compose.yml -p outline logs backups-keycloak 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
 
       - name: Verify a backup is produced and valid (backups-outline)
         # Log-driven: the file named in a 'backup OK' line is complete by
         # definition, so this never races a dump that is still being written.
         run: |
           # shellcheck disable=SC2016
-          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-outline 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
-          db=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-outline 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
+          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
+          db=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
           echo "Database backup file: $db"
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" exec -T backups-outline sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
+          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
           # shellcheck disable=SC2016
-          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-outline 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the data archive..."; sleep 10; done'
-          data=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-outline 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
+          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the data archive..."; sleep 10; done'
+          data=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
           [ -n "$data" ] || { echo "::error::no 'Data backup OK' line - the data archive failed"; exit 1; }
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" exec -T backups-outline sh -c "tar -tzf '$data' > /dev/null" && echo "Data backup valid: $data"
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" logs backups-outline 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "tar -tzf '$data' > /dev/null" && echo "Data backup valid: $data"
+          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
 
       - name: Show container logs on failure
         if: failure()
