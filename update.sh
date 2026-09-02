@@ -20,7 +20,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-COMPOSE_FILE="01-traefik-outline-letsencrypt-docker-compose.yml"
+# Three compose files, applied in order like the CI job does: Traefik first,
+# then Keycloak, then Outline with its MinIO and Redis.
+COMPOSE_FILES=(01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-minio-redis-docker-compose.yml)
 PROJECT="${COMPOSE_PROJECT_NAME:-outline-keycloak}"
 DRY_RUN=false
 ALLOW_MAJOR=false
@@ -68,5 +70,7 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 git checkout -q "$latest"
-docker compose -f "$COMPOSE_FILE" -p "$PROJECT" up -d --remove-orphans
+for f in "${COMPOSE_FILES[@]}"; do
+  docker compose -f "$f" -p "$PROJECT" up -d
+done
 echo "now on $latest"
