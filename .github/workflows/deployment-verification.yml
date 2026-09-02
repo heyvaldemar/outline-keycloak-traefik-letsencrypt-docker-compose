@@ -262,7 +262,7 @@ jobs:
       - name: Wait for Keycloak to report healthy
         run: |
           # shellcheck disable=SC2016
-          timeout 10m bash -c 'until [ "$(docker inspect -f "{{.State.Health.Status}}" "$(docker ps -qf name=keycloak | head -1)")" = "healthy" ]; do
+          timeout 10m bash -c 'until [ "$(docker inspect -f "{{.State.Health.Status}}" "$(docker compose -f 02-keycloak-outline-docker-compose.yml -p outline ps -q keycloak)")" = "healthy" ]; do
             echo "Keycloak still starting..."
             sleep 10
           done'
