@@ -25,6 +25,16 @@ volumes:
 services:
   postgres-keycloak:
     image: *kc-postgres-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_POSTGRES_KEYCLOAK_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_POSTGRES_KEYCLOAK_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_POSTGRES_KEYCLOAK_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_POSTGRES_KEYCLOAK_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_POSTGRES_KEYCLOAK_CPU_RESERVATION:-0.25}"
     volumes:
       - keycloak-postgres:/var/lib/postgresql/data
     environment:
@@ -43,6 +53,16 @@ services:
 
   keycloak:
     image: *keycloak-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_KEYCLOAK_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_KEYCLOAK_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_KEYCLOAK_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_KEYCLOAK_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_KEYCLOAK_CPU_RESERVATION:-0.25}"
     command: start
     environment:
       KC_DB: postgres
@@ -102,6 +122,16 @@ services:
 
   backups-keycloak:
     image: *kc-postgres-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_BACKUPS_KEYCLOAK_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_BACKUPS_KEYCLOAK_MEMORY_LIMIT:-256m}
+          cpus: "${OUTLINE_KEYCLOAK_BACKUPS_KEYCLOAK_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_BACKUPS_KEYCLOAK_MEMORY_RESERVATION:-32m}
+          cpus: "${OUTLINE_KEYCLOAK_BACKUPS_KEYCLOAK_CPU_RESERVATION:-0.1}"
     command: >-
       sh -c 'sleep $$KEYCLOAK_BACKUP_INIT_SLEEP &&
       while true; do

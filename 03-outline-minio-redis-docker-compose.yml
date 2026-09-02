@@ -29,6 +29,16 @@ volumes:
 services:
   postgres-outline:
     image: *outline-postgres-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_POSTGRES_OUTLINE_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_POSTGRES_OUTLINE_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_POSTGRES_OUTLINE_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_POSTGRES_OUTLINE_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_POSTGRES_OUTLINE_CPU_RESERVATION:-0.25}"
     volumes:
       - outline-postgres:/var/lib/postgresql/data
     environment:
@@ -47,6 +57,16 @@ services:
 
   redis:
     image: *redis-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_REDIS_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_REDIS_MEMORY_LIMIT:-256m}
+          cpus: "${OUTLINE_KEYCLOAK_REDIS_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_REDIS_MEMORY_RESERVATION:-32m}
+          cpus: "${OUTLINE_KEYCLOAK_REDIS_CPU_RESERVATION:-0.1}"
     networks:
       - outline-network
     healthcheck:
@@ -59,6 +79,16 @@ services:
 
   minio:
     image: *minio-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_MINIO_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_MINIO_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_MINIO_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_MINIO_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_MINIO_CPU_RESERVATION:-0.25}"
     entrypoint: /bin/sh
     command:
       - -c
@@ -185,6 +215,16 @@ services:
 
   outline:
     image: *outline-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_OUTLINE_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_OUTLINE_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_OUTLINE_CPU_LIMIT:-1.0}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_OUTLINE_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_OUTLINE_CPU_RESERVATION:-0.25}"
     environment:
       DATABASE_URL: postgres://${OUTLINE_DB_USER:-outlinedbuser}:${OUTLINE_DB_PASSWORD}@postgres-outline:5432/${OUTLINE_DB_NAME:-outlinedb}?sslmode=disable&connect_timeout=10
       PGSSLMODE: disable
@@ -256,6 +296,16 @@ services:
 
   backups-outline:
     image: *outline-postgres-image
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_MEMORY_LIMIT=2g);
+    # the override survives every git pull.
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_MEMORY_LIMIT:-256m}
+          cpus: "${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_MEMORY_RESERVATION:-32m}
+          cpus: "${OUTLINE_KEYCLOAK_BACKUPS_OUTLINE_CPU_RESERVATION:-0.1}"
     command: >-
       sh -c 'sleep $$OUTLINE_BACKUP_INIT_SLEEP &&
       while true; do
