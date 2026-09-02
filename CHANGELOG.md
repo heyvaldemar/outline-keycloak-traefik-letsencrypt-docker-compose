@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.1.0] - 2026-09-02
+
+### Added
+
+- **`update.sh`** — unattended updates to the newest tagged release,
+  and nothing else: a tag is cut only after CI has booted the pinned
+  images and passed the smoke tests, so "update to the latest tag" means
+  "update to a combination a machine has already run". It refuses to
+  cross a major version on its own (`--allow-major` after reading the
+  notes), refuses a checkout with local modifications, and supports
+  `--dry-run`. Put it on a cron timer for hands-off minor/patch updates.
+
 ## [1.0.0] - 2026-08-31
 
 First semver release. Brings this template to the fleet standard established
@@ -56,5 +68,6 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/releases/tag/v1.0.0

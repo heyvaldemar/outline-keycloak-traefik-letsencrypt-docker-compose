@@ -139,6 +139,26 @@ Two backup sidecars run dump → prune → sleep loops: one for the Keycloak dat
 
 **Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`.
 
+## Unattended updates
+
+Releases are the update channel: a tag is cut only after CI has built the pinned images, booted the full stack, and passed the smoke tests. `update.sh` moves a deployment to the newest tag and nothing else:
+
+```bash
+./update.sh --dry-run   # show what would be applied
+./update.sh             # update within the current major and redeploy
+```
+
+Put it on a timer for hands-off minor/patch updates:
+
+```bash
+# crontab -e
+17 5 * * *  /opt/outline-keycloak-traefik-letsencrypt-docker-compose/update.sh >> /var/log/outline-keycloak-update.log 2>&1
+```
+
+The script refuses to cross a MAJOR template version on its own — majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh --allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
+
+This is deliberately a host-side script and not a container in the stack: an in-stack updater needs the Docker socket (root on the host) and turns "someone pushed to a repo" into "someone deployed to your machine" with no operator in the loop. A cron job under your own user updates only to tagged, CI-verified states and leaves the trust boundary where it was.
+
 ## Testing
 
 The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every Monday at 06:00 UTC:
