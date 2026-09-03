@@ -6,10 +6,10 @@
 # CI (Trivy scans, check-pin-freshness, the ephemeral test .env) reads
 # the pins from these lines — this block is the single source of truth.
 x-images:
-  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}
-  outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:1.9.2@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf}
-  redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:7.4@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7}
-  minio: &minio-image ${OUTLINE_MINIO_IMAGE_TAG:-minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
+  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}}
+  outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:${OUTLINE_IMAGE_VERSION:-1.9.2@sha256:32d76719c378931dd65d93945930ca380d8376a0337d98a991fcc12b266f33cf}}
+  redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7}}
+  minio: &minio-image ${OUTLINE_MINIO_IMAGE_TAG:-minio/minio:${OUTLINE_MINIO_IMAGE_VERSION:-RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}}
 
 networks:
   outline-network:
