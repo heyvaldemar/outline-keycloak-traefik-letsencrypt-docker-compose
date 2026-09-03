@@ -102,10 +102,10 @@ v1.2.0.
   provider of this stack. Back up before pulling. Schema migrates
   forward only.
 - **Outline bumped 0.78.0 → 1.9.2**, **MinIO bumped from an August 2023
-  build to the latest Docker Hub release**, **Redis 7.2 → 7.4**,
+  build to the latest Docker Hub release, Redis 7.2 → 7.4**,
   **PostgreSQL 14 → 16** for both databases (14 reaches end-of-life in
   November 2026: existing deployments need a dump/restore migration, see
-  the release notes), **Traefik 3.2 → 3.7** (3.2's Docker client cannot
+  the release notes), Traefik 3.2 → 3.7 (3.2's Docker client cannot
   talk to Docker Engine 29).
 - **All seven images pinned by `tag@sha256:digest`** across the three
   compose files.

@@ -17,7 +17,7 @@
 - [Security Notes](#security-notes)
 - [About the maintainer](#about-the-maintainer)
 
-This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC identity provider, **MinIO** for file storage, **PostgreSQL** ×2 and **Redis**, all behind **Traefik** with automatic **Let's Encrypt TLS**: three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
+This repository deploys Outline (team wiki) with Keycloak as its OIDC identity provider, MinIO for file storage, PostgreSQL ×2 and Redis, all behind Traefik with automatic Let's Encrypt TLS: three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
 
 📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
 
@@ -37,9 +37,9 @@ Nine services across three compose files, deployed in strict order. Heavier than
 
 ## Prerequisites
 
-- **A Linux server** with a public IP and **~4 GB free RAM** for the full stack.
+- **A Linux server** with a public IP and ~4 GB free RAM for the full stack.
 - **Docker Engine 24+ and Docker Compose 2.20+.**
-- **A domain you control,** with **five** `A` records pointing at your server's public IP: Outline, Keycloak, MinIO S3, MinIO console, and the Traefik dashboard (see `.env.example`). DNS must propagate before deploy.
+- **A domain you control,** with five `A` records pointing at your server's public IP: Outline, Keycloak, MinIO S3, MinIO console, and the Traefik dashboard (see `.env.example`). DNS must propagate before deploy.
 - **Ports 80 and 443 open** on the server's firewall.
 
 ## Getting started
@@ -107,14 +107,14 @@ curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
 - **Outline** latest stable (1.9 line): documents, collections, search, real-time collaboration.
 - **Keycloak 26.7** as the OIDC provider: users, groups, MFA, federation if you need it.
 - **MinIO** S3-compatible storage for uploads, with its own console.
-- **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and **Redis 7.4**.
+- **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and Redis 7.4.
 - **Traefik v3** with automatic HTTPS for all five hostnames.
 - **Scheduled backups**: both databases (`pg_dump | gzip`) and MinIO data (`tar.gz`), with retention pruning and three restore scripts.
 - **Credentials required at deploy time**: compose fails fast if `.env` is incomplete.
 
 ## Supply chain trust
 
-This repository is a **deployment template**. Seven images across three compose files, each pinned to `tag@sha256:<digest>` as interpolation defaults in that file's `x-images` block: `git pull` alone delivers the version combination this repository has tested; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
+This repository is a deployment template. Seven images across three compose files, each pinned to `tag@sha256:<digest>` as interpolation defaults in that file's `x-images` block: `git pull` alone delivers the version combination this repository has tested; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
 Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps only the version of that image (Compose then pulls the tag, without a digest) and leaves every other pin as tested; `<PREFIX>_IMAGE_TAG` replaces the whole reference, digest included. The variable names are listed in `.env.example`. Nested defaults need Docker Compose v2.5 or newer (2022); v2.0 to v2.4 leave the inner `${...}` unexpanded and `docker compose up` fails with an invalid reference instead of deploying something unexpected.
 
@@ -182,7 +182,7 @@ The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-tr
 
 A green run is the authoritative proof that the template deploys end-to-end.
 
-## Security Notes
+## Security notes
 
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
 - **Pre-rotation advisory.** Releases before v1.0.0 (2026-08-31) shipped a tracked `.env` with generated-looking passwords for Keycloak, Outline, and MinIO. Rotate all of them if your deployment reused them.
