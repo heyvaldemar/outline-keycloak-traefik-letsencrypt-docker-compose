@@ -92,7 +92,7 @@ jobs:
           ENV_VAR: ${{ matrix.env_var }}
           PIN_FILE: ${{ matrix.file }}
         run: |
-          image="$(grep -m1 -oE "\\\$\\{${ENV_VAR}:-.*" "$PIN_FILE" | sed -E -e ':a' -e 's/\$\{[A-Z_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          image="$(grep -m1 -oE "\\\$\\{${ENV_VAR}:-.*" "$PIN_FILE" | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
           if [ -z "$image" ]; then
             echo "${ENV_VAR} default not found in ${PIN_FILE}" >&2
             exit 1
@@ -137,7 +137,7 @@ jobs:
           status=0
           check_digest() {
             var="$1"; file="$2"
-            pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" "$file" | sed -E -e ':a' -e 's/\$\{[A-Z_]+:-([^{}]*)\}/\1/' -e 'ta')"
+            pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" "$file" | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
             ref="${pin%%@*}"
             pinned_digest="${pin##*@}"
             current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
@@ -162,7 +162,7 @@ jobs:
           status=0
           check_gh() {
             var="$1"; file="$2"; gh_repo="$3"
-            pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" "$file" | sed -E -e ':a' -e 's/\$\{[A-Z_]+:-([^{}]*)\}/\1/' -e 'ta')"
+            pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" "$file" | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
             ref="${pin%%@*}"
             pinned_version="${ref##*:}"
             latest="$(curl -fsSL --retry 3 "https://api.github.com/repos/${gh_repo}/releases/latest" | jq -r .tag_name)"
@@ -179,7 +179,7 @@ jobs:
           }
           check_gh KEYCLOAK_IMAGE_TAG 02-keycloak-outline-docker-compose.yml keycloak/keycloak
           check_gh OUTLINE_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml outline/outline
-          pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' 01-traefik-outline-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z_]+:-([^{}]*)\}/\1/' -e 'ta')"
+          pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' 01-traefik-outline-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
           ref="${pin%%@*}"; pinned_minor="${ref##*:}"
           latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"; latest="${latest#v}"
           case "$latest" in
