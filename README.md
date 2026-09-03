@@ -121,7 +121,7 @@ This repository is a **deployment template**. Seven images across three compose 
 - [`outlinewiki/outline`](https://hub.docker.com/r/outlinewiki/outline) — Outline upstream
 - [`minio/minio`](https://hub.docker.com/r/minio/minio) — MinIO upstream
 
-The weekly `check-pin-freshness` CI job re-resolves all seven pins against their registries and compares the pinned Keycloak, Outline, and Traefik versions against the latest upstream releases. CI runs on every push, pull request, and every Monday at 06:00 UTC. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
+The daily `check-pin-freshness` CI job re-resolves all seven pins against their registries and compares the pinned Keycloak, Outline, and Traefik versions against the latest upstream releases. CI runs on every push, pull request, and every day at 06:00 UTC. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
 ## Production checklist
 
@@ -167,11 +167,11 @@ Every service carries memory and CPU limits plus reservations as compose-level d
 
 ## Testing
 
-The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every Monday at 06:00 UTC:
+The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every day at 06:00 UTC:
 
 1. **Lint** — shellcheck on all three restore scripts, actionlint on the workflow.
 2. **Trivy scans** of six unique pinned images (CRITICAL/HIGH, SARIF to the Security tab).
-3. **Pin freshness** (weekly/manual) — digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
+3. **Pin freshness** (daily/manual) — digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
 4. **Deploy-and-test** — boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, MinIO liveness through Traefik, and the Outline login page through Traefik.
 
 A green run is the authoritative proof that the template deploys end-to-end.
@@ -181,7 +181,7 @@ A green run is the authoritative proof that the template deploys end-to-end.
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
 - **Pre-rotation advisory.** Releases before v1.0.0 (2026-08-31) shipped a tracked `.env` with generated-looking passwords for Keycloak, Outline, and MinIO. Rotate all of them if your deployment reused them.
 - Databases and Redis listen only on internal networks.
-- Upstream image digests are pinned; the weekly freshness job flags drift loudly.
+- Upstream image digests are pinned; the daily freshness job flags drift loudly.
 
 ---
 
