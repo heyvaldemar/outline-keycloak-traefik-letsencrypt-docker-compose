@@ -25,6 +25,10 @@ _(no unreleased changes yet)_
   `docker compose up` fails with an invalid reference instead of
   deploying something unexpected.
 
+### Changed
+
+- `outlinewiki/outline` 1.9.2 to 1.10.0.
+
 ## [1.4.0] - 2026-09-02
 
 ### Security
