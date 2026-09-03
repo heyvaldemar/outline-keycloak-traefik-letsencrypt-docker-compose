@@ -60,7 +60,7 @@ _(no unreleased changes yet)_
 
 ### Added
 
-- **`update.sh`** — unattended updates to the newest tagged release,
+- **`update.sh`**: unattended updates to the newest tagged release,
   and nothing else: a tag is cut only after CI has booted the pinned
   images and passed the smoke tests, so "update to the latest tag" means
   "update to a combination a machine has already run". It refuses to
@@ -76,21 +76,21 @@ v1.2.0.
 
 ### Security
 
-- **Keycloak bumped 25.0 → 26.7.3** — the 25.0 pin was affected by the
+- **Keycloak bumped 25.0 → 26.7.3**: the 25.0 pin was affected by the
   entire 2026 CVE series, including CVE-2026-18963 (unauthenticated
   account takeover via password-reset bypass, CVSS 9.1). The identity
-  provider of this stack. Back up before pulling — schema migrates
+  provider of this stack. Back up before pulling. Schema migrates
   forward only.
 - **Outline bumped 0.78.0 → 1.9.2**, **MinIO bumped from an August 2023
   build to the latest Docker Hub release**, **Redis 7.2 → 7.4**,
   **PostgreSQL 14 → 16** for both databases (14 reaches end-of-life in
-  November 2026 — existing deployments need a dump/restore migration, see
+  November 2026: existing deployments need a dump/restore migration, see
   the release notes), **Traefik 3.2 → 3.7** (3.2's Docker client cannot
   talk to Docker Engine 29).
 - **All seven images pinned by `tag@sha256:digest`** across the three
   compose files.
 - **Credentials untracked from git.** The tracked `.env` carried
-  generated-looking passwords for Keycloak, Outline, and MinIO — rotate
+  generated-looking passwords for Keycloak, Outline, and MinIO. Rotate
   all of them if your deployment reused them.
 - Keycloak admin bootstrap moved to the KC 26 `KC_BOOTSTRAP_ADMIN_*`
   variables.

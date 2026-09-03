@@ -1,4 +1,4 @@
-# Outline + Keycloak + Traefik + Let's Encrypt — Docker Compose
+# Outline + Keycloak + Traefik + Let's Encrypt on Docker Compose
 
 [![Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -17,7 +17,7 @@
 - [Security Notes](#security-notes)
 - [About the maintainer](#about-the-maintainer)
 
-This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC identity provider, **MinIO** for file storage, **PostgreSQL** ×2 and **Redis**, all behind **Traefik** with automatic **Let's Encrypt TLS** — three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
+This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC identity provider, **MinIO** for file storage, **PostgreSQL** ×2 and **Redis**, all behind **Traefik** with automatic **Let's Encrypt TLS**: three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
 
 📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
 
@@ -33,7 +33,7 @@ This repository deploys **Outline** (team wiki) with **Keycloak** as its OIDC id
 | Weekly pin-freshness check in CI | ✅ | ❌ | Rare |
 | CI-verified deployment on every push | ✅ 3 stacks booted | ❌ | Rare |
 
-Nine services across three compose files, deployed in strict order. Heavier than a single-app template — this is a complete platform.
+Nine services across three compose files, deployed in strict order. Heavier than a single-app template. This is a complete platform.
 
 ## Prerequisites
 
@@ -57,7 +57,7 @@ docker network create outline-network
 # 3. Copy the environment template and fill in required values
 cp .env.example .env
 $EDITOR .env
-# ^ See .env.example — hostnames, passwords, Outline secrets, and the
+# ^ See .env.example, hostnames, passwords, Outline secrets, and the
 #   OIDC endpoints (the client secret arrives in the realm step below).
 
 # 4. Deploy in order
@@ -74,10 +74,10 @@ Keycloak, MinIO, and Outline come up with fresh Let's Encrypt certificates. Outl
 2. Create a realm named `outline`.
 3. In the realm, create a client `outline`: client type OpenID Connect, client authentication ON, valid redirect URI `https://${OUTLINE_HOSTNAME}/auth/oidc.callback`.
 4. Copy the client secret (client → Credentials) into `OUTLINE_OIDC_CLIENT_SECRET` in `.env`.
-5. Create your users in the realm (email required — Outline maps accounts by the email claim).
+5. Create your users in the realm (email required: Outline maps accounts by the email claim).
 6. Recreate Outline: `docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d --force-recreate`.
 
-Sign in on Outline via the Keycloak button — first user in becomes the workspace admin.
+Sign in on Outline via the Keycloak button. First user in becomes the workspace admin.
 
 ### What success looks like
 
@@ -99,45 +99,45 @@ curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
 
 - **Cert issuance fails.** One of the five DNS records hasn't propagated, or port 80 isn't reachable.
 - **`docker compose up` fails with `set in .env`.** A required variable is empty; the error names it.
-- **Networks not found.** Step 2 was skipped — all three networks are required.
+- **Networks not found.** Step 2 was skipped: all three networks are required.
 - **OIDC error on login.** Realm/client mismatch: verify the redirect URI, the client secret, and that the three `OUTLINE_OIDC_*_URI` values use your Keycloak hostname and the `outline` realm.
 
 ## Features
 
-- **Outline** latest stable (1.9 line) — documents, collections, search, real-time collaboration.
-- **Keycloak 26.7** as the OIDC provider — users, groups, MFA, federation if you need it.
+- **Outline** latest stable (1.9 line): documents, collections, search, real-time collaboration.
+- **Keycloak 26.7** as the OIDC provider: users, groups, MFA, federation if you need it.
 - **MinIO** S3-compatible storage for uploads, with its own console.
 - **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and **Redis 7.4**.
 - **Traefik v3** with automatic HTTPS for all five hostnames.
 - **Scheduled backups**: both databases (`pg_dump | gzip`) and MinIO data (`tar.gz`), with retention pruning and three restore scripts.
-- **Credentials required at deploy time** — compose fails fast if `.env` is incomplete.
+- **Credentials required at deploy time**: compose fails fast if `.env` is incomplete.
 
 ## Supply chain trust
 
-This repository is a **deployment template**. Seven images across three compose files, each pinned to `tag@sha256:<digest>` as interpolation defaults in that file's `x-images` block — `git pull` alone delivers the version combination this repository has tested; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
+This repository is a **deployment template**. Seven images across three compose files, each pinned to `tag@sha256:<digest>` as interpolation defaults in that file's `x-images` block: `git pull` alone delivers the version combination this repository has tested; an `*_IMAGE_TAG` variable in `.env` overrides deliberately.
 
-- [`traefik`](https://hub.docker.com/_/traefik), [`postgres`](https://hub.docker.com/_/postgres) ×2, [`redis`](https://hub.docker.com/_/redis) — Docker Hub official images
-- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak) — Keycloak upstream
-- [`outlinewiki/outline`](https://hub.docker.com/r/outlinewiki/outline) — Outline upstream
-- [`minio/minio`](https://hub.docker.com/r/minio/minio) — MinIO upstream
+- [`traefik`](https://hub.docker.com/_/traefik), [`postgres`](https://hub.docker.com/_/postgres) ×2, [`redis`](https://hub.docker.com/_/redis): Docker Hub official images
+- [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak): Keycloak upstream
+- [`outlinewiki/outline`](https://hub.docker.com/r/outlinewiki/outline): Outline upstream
+- [`minio/minio`](https://hub.docker.com/r/minio/minio): MinIO upstream
 
 The daily `check-pin-freshness` CI job re-resolves all seven pins against their registries and compares the pinned Keycloak, Outline, and Traefik versions against the latest upstream releases. CI runs on every push, pull request, and every day at 06:00 UTC. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
 ## Production checklist
 
-- [ ] **Strong secrets everywhere** — six generated passwords/secrets in `.env`; regenerate the Traefik dashboard hash per deployment.
+- [ ] **Strong secrets everywhere**: six generated passwords/secrets in `.env`; regenerate the Traefik dashboard hash per deployment.
 - [ ] **Complete the realm step** and disable Keycloak's bootstrap admin after creating named admins.
 - [ ] **Restrict MinIO console exposure** if you don't need it publicly.
 - [ ] **Host-mount the backup volumes** for disaster recovery.
 - [ ] **Verify Let's Encrypt certs** for all five hostnames in the Traefik logs.
-- [ ] **Back up before upgrades** — Keycloak and Outline both migrate schemas forward only.
+- [ ] **Back up before upgrades**: Keycloak and Outline both migrate schemas forward only.
 - [ ] **Know the restore procedure.** Three scripts: Keycloak DB, Outline DB, MinIO data.
 
 ## Backups
 
 Two backup sidecars run dump → prune → sleep loops: one for the Keycloak database, one for the Outline database + MinIO data directory. All knobs configured via `.env` with compose-level defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
-Each cycle logs `Database backup OK: <file> (<bytes> bytes)` or `Database backup FAILED` (the same for the data archive where there is one). A failed dump is kept as `<file>.failed` for diagnosis and never overwrites a good backup — grep the log for `FAILED` from your monitoring.
+Each cycle logs `Database backup OK: <file> (<bytes> bytes)` or `Database backup FAILED` (the same for the data archive where there is one). A failed dump is kept as `<file>.failed` for diagnosis and never overwrites a good backup. Grep the log for `FAILED` from your monitoring.
 
 **Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`.
 
@@ -157,13 +157,13 @@ Put it on a timer for hands-off minor/patch updates:
 17 5 * * *  /opt/outline-keycloak-traefik-letsencrypt-docker-compose/update.sh >> /var/log/outline-keycloak-update.log 2>&1
 ```
 
-The script refuses to cross a MAJOR template version on its own — majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh --allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
+The script refuses to cross a MAJOR template version on its own: majors are breaking by definition and their release notes exist to be read. After reading them, `./update.sh --allow-major` performs the jump. It also refuses to touch a checkout with local modifications: your customization belongs in `.env`, which updates never overwrite.
 
 This is deliberately a host-side script and not a container in the stack: an in-stack updater needs the Docker socket (root on the host) and turns "someone pushed to a repo" into "someone deployed to your machine" with no operator in the loop. A cron job under your own user updates only to tagged, CI-verified states and leaves the trust boundary where it was.
 
 ## Resource limits
 
-Every service carries memory and CPU limits plus reservations as compose-level defaults — the same values CI boots the stack under. Override any of them in `.env` (the knobs and their defaults are listed in `.env.example`, e.g. `TRAEFIK_MEMORY_LIMIT=512m`) and the override survives every `git pull`. If a service is OOM-killed under real load, `docker inspect <container> --format '{{.State.OOMKilled}}'` says so; raise its `_MEMORY_LIMIT` and recreate.
+Every service carries memory and CPU limits plus reservations as compose-level defaults, the same values CI boots the stack under. Override any of them in `.env` (the knobs and their defaults are listed in `.env.example`, e.g. `TRAEFIK_MEMORY_LIMIT=512m`) and the override survives every `git pull`. If a service is OOM-killed under real load, `docker inspect <container> --format '{{.State.OOMKilled}}'` says so; raise its `_MEMORY_LIMIT` and recreate.
 
 ## Container hardening
 
@@ -173,10 +173,10 @@ Every service runs with `security_opt: no-new-privileges:true`, so a process can
 
 The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/workflows/deployment-verification.yml?query=branch%3Amain) workflow runs on every push, pull request, and every day at 06:00 UTC:
 
-1. **Lint** — shellcheck on all three restore scripts, actionlint on the workflow.
+1. **Lint**: shellcheck on all three restore scripts, actionlint on the workflow.
 2. **Trivy scans** of six unique pinned images (CRITICAL/HIGH, SARIF to the Security tab).
-3. **Pin freshness** (daily/manual) — digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
-4. **Deploy-and-test** — boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, MinIO liveness through Traefik, and the Outline login page through Traefik.
+3. **Pin freshness** (daily/manual): digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
+4. **Deploy-and-test**: boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, MinIO liveness through Traefik, and the Outline login page through Traefik.
 
 A green run is the authoritative proof that the template deploys end-to-end.
 
@@ -193,7 +193,7 @@ A green run is the authoritative proof that the template deploys end-to-end.
 
 <div align="center">
 
-**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** — Docker Captain · IBM Champion · AWS Community Builder
+**Maintained by [Vladimir Mikhalev](https://github.com/heyvaldemar)** · Docker Captain · IBM Champion · AWS Community Builder
 
 [YouTube](https://www.youtube.com/channel/UCf85kQ0u1sYTTTyKVpxrlyQ?sub_confirmation=1) · [Blog](https://heyvaldemar.com) · [LinkedIn](https://www.linkedin.com/in/heyvaldemar/)
 
