@@ -140,7 +140,19 @@ jobs:
             pin="$(grep -m1 -oE "\\\$\\{${var}:-.*" "$file" | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
             ref="${pin%%@*}"
             pinned_digest="${pin##*@}"
-            current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' | jq -r .digest)"
+            # Three attempts: an unanswered registry lookup used to leave this empty,
+            # and the comparison below then reported it as drift.
+            current_digest=""
+            for attempt in 1 2 3; do
+              current_digest="$(docker buildx imagetools inspect "$ref" --format '{{json .Manifest}}' 2>/dev/null | jq -r '.digest // empty')"
+              [ -n "$current_digest" ] && break
+              sleep $(( attempt * 5 ))
+            done
+            if [ -z "$current_digest" ]; then
+              echo "::error::${ref} did not resolve after three attempts: the registry did not answer, or the tag is gone. The pin itself is unchanged."
+              status=1
+              return
+            fi
             if [ "$pinned_digest" != "$current_digest" ]; then
               echo "::error::${var} digest drift: pinned ${pinned_digest}, but ${ref} now resolves to ${current_digest}"
               status=1
@@ -319,6 +331,11 @@ jobs:
           [ -n "$data" ] || { echo "::error::no 'Data backup OK' line - the data archive failed"; exit 1; }
           docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "tar -tzf '$data' > /dev/null" && echo "Data backup valid: $data"
           docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+
+      - name: Run the backup/restore end-to-end tests
+        env:
+          COMPOSE_PROJECT_NAME: outline
+        run: ./tests/e2e-backup-restore.sh
 
       - name: Show container logs on failure
         if: failure()
