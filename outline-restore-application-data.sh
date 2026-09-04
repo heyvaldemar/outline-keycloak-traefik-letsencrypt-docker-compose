@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # # outline-restore-application-data.sh Description
 # This script is designed to restore the application data.
@@ -12,8 +13,27 @@
 # `chmod +x outline-restore-application-data.sh`
 # By utilizing this script, you can efficiently restore application data from an existing backup while ensuring proper coordination with the running service.
 
-OUTLINE_CONTAINER=$(docker ps -aqf "name=outline-minio")
-OUTLINE_BACKUPS_CONTAINER=$(docker ps -aqf "name=outline-backups-outline")
+# Containers are resolved through Compose, not through a name filter. Every
+# service in this stack deploys under one project ("outline" in the README), so
+# a filter like "name=keycloak-keycloak" matches nothing and the script then
+# runs docker stop and docker exec against an empty id.
+COMPOSE_FILE="03-outline-minio-redis-docker-compose.yml"
+PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
+
+resolve_container() {
+  local service="$1" id
+  id="$(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" ps -q "$service" 2>/dev/null | head -n 1)"
+  if [ -z "$id" ]; then
+    echo "error: no container for service '$service' in project '$PROJECT'." >&2
+    echo "       Run this script from the directory holding $COMPOSE_FILE, and set" >&2
+    echo "       COMPOSE_PROJECT_NAME if you deployed under a different project name." >&2
+    exit 1
+  fi
+  printf '%s' "$id"
+}
+
+OUTLINE_CONTAINER="$(resolve_container minio)"
+OUTLINE_BACKUPS_CONTAINER="$(resolve_container backups-outline)"
 BACKUP_PATH="/srv/outline-application-data/backups/"
 RESTORE_PATH="/data/"
 BACKUP_PREFIX="outline-application-data"

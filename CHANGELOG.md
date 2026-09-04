@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [1.6.0] - 2026-09-04
+
+### Fixed
+
+- **`keycloak-restore-database.sh` could not find a single container.** It
+  looked them up with `docker ps -aqf "name=keycloak-keycloak"`, but every
+  service in this stack deploys under one project, `outline`, so the running
+  containers are `outline-keycloak-1` and `outline-backups-keycloak-1`. The
+  filter matched nothing, both variables stayed empty, and the script ran
+  `docker stop ""` and `docker exec ""`. Restoring the Keycloak database from a
+  backup never worked. All three restore scripts now resolve containers through
+  `docker compose ps -q` and stop with a clear message when a service is not
+  running.
+- **`update.sh` deployed a second copy of the stack instead of updating it.**
+  Its project name defaulted to `outline-keycloak` while the README, CI and the
+  restore scripts all use `outline`. On the cron schedule the README suggests,
+  the nightly run would have brought up a parallel set of containers, fought the
+  first set for ports, and left the original stack on the old images.
+
+### Added
+
+- **`tests/e2e-backup-restore.sh`**, run by CI on every push. It proves what the
+  three restore scripts claim, against the live stack: both backup loops produce
+  a readable PostgreSQL dump, the application data archive lists without error,
+  a database outage is reported as `FAILED` and keeps the partial file, a
+ restore of each database replaces state (a row inserted after the
+  backup is gone afterwards), and pruning removes an aged file while keeping the
+  recent ones.
+
 ## [1.5.0] - 2026-09-03
 
 ### Added
@@ -135,7 +164,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.2.0...v1.3.0

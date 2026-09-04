@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # # keycloak-restore-database.sh Description
 # This script facilitates the restoration of a database backup.
@@ -12,8 +13,27 @@
 # `chmod +x keycloak-restore-database.sh`
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
-KEYCLOAK_CONTAINER=$(docker ps -aqf "name=keycloak-keycloak")
-KEYCLOAK_BACKUPS_CONTAINER=$(docker ps -aqf "name=keycloak-backups-keycloak")
+# Containers are resolved through Compose, not through a name filter. Every
+# service in this stack deploys under one project ("outline" in the README), so
+# a filter like "name=keycloak-keycloak" matches nothing and the script then
+# runs docker stop and docker exec against an empty id.
+COMPOSE_FILE="02-keycloak-outline-docker-compose.yml"
+PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
+
+resolve_container() {
+  local service="$1" id
+  id="$(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" ps -q "$service" 2>/dev/null | head -n 1)"
+  if [ -z "$id" ]; then
+    echo "error: no container for service '$service' in project '$PROJECT'." >&2
+    echo "       Run this script from the directory holding $COMPOSE_FILE, and set" >&2
+    echo "       COMPOSE_PROJECT_NAME if you deployed under a different project name." >&2
+    exit 1
+  fi
+  printf '%s' "$id"
+}
+
+KEYCLOAK_CONTAINER="$(resolve_container keycloak)"
+KEYCLOAK_BACKUPS_CONTAINER="$(resolve_container backups-keycloak)"
 KEYCLOAK_DB_NAME="keycloakdb"
 KEYCLOAK_DB_USER="keycloakdbuser"
 BACKUP_PATH="/srv/keycloak-postgres/backups/"

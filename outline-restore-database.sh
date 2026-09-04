@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # # outline-restore-database.sh Description
 # This script facilitates the restoration of a database backup.
@@ -12,8 +13,27 @@
 # `chmod +x outline-restore-database.sh`
 # Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
 
-OUTLINE_CONTAINER=$(docker ps -aqf "name=outline-outline")
-OUTLINE_BACKUPS_CONTAINER=$(docker ps -aqf "name=outline-backups-outline")
+# Containers are resolved through Compose, not through a name filter. Every
+# service in this stack deploys under one project ("outline" in the README), so
+# a filter like "name=keycloak-keycloak" matches nothing and the script then
+# runs docker stop and docker exec against an empty id.
+COMPOSE_FILE="03-outline-minio-redis-docker-compose.yml"
+PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
+
+resolve_container() {
+  local service="$1" id
+  id="$(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" ps -q "$service" 2>/dev/null | head -n 1)"
+  if [ -z "$id" ]; then
+    echo "error: no container for service '$service' in project '$PROJECT'." >&2
+    echo "       Run this script from the directory holding $COMPOSE_FILE, and set" >&2
+    echo "       COMPOSE_PROJECT_NAME if you deployed under a different project name." >&2
+    exit 1
+  fi
+  printf '%s' "$id"
+}
+
+OUTLINE_CONTAINER="$(resolve_container outline)"
+OUTLINE_BACKUPS_CONTAINER="$(resolve_container backups-outline)"
 OUTLINE_DB_NAME="outlinedb"
 OUTLINE_DB_USER="outlinedbuser"
 BACKUP_PATH="/srv/outline-postgres/backups/"
