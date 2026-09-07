@@ -170,6 +170,9 @@ jobs:
           exit "$status"
 
       - name: Compare pinned app versions against the latest releases
+        # Runs even when the digest comparison above failed, so one run
+        # reports every problem it can see instead of one per day.
+        if: always()
         run: |
           status=0
           check_gh() {
