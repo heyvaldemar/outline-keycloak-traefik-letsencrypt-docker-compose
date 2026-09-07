@@ -9,15 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
-## [1.6.0] - 2026-09-04
+## [1.6.1] - 2026-09-07
 
-### Fixed
+### Changed
 
-- **`keycloak-restore-database.sh` could not find a single container.** It
-  looked them up with `docker ps -aqf "name=keycloak-keycloak"`, but every
-  service in this stack deploys under one project, `outline`, so the running
-  containers are `outline-keycloak-1` and `outline-backups-keycloak-1`. The
-  filter matched nothing, both variables stayed empty, and the script ran
+- **`update.sh` names any new required variable before it moves.** An update can add a required variable; `docker compose up` used to stop on it after the checkout, with the tree already on the new tag. The script now lists the variables that appeared in `.env.example` since your version and refuses, before anything has moved, when a required one is not in your `.env`. Names only, never values.
+
+
   `docker stop ""` and `docker exec ""`. Restoring the Keycloak database from a
   backup never worked. All three restore scripts now resolve containers through
   `docker compose ps -q` and stop with a clear message when a service is not
@@ -164,7 +162,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.1...HEAD
+[1.6.1]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.3.0...v1.4.0
