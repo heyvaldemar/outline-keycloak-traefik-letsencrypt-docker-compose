@@ -305,8 +305,25 @@ jobs:
           git fetch --depth=1 --quiet origin "refs/tags/$prev:refs/tags/$prev"
           # shellcheck disable=SC2086
           if git diff --quiet "$prev" -- $files; then echo "the compose files are unchanged since $prev: nothing to drill"; exit 0; fi
+
+          # A compose file can be RENAMED between releases, and one was when the
+          # storage changed: what is now 03-outline-garage-... was
+          # 03-outline-minio-... in every 1.x tag. `git show <tag>:<new name>`
+          # then fails with "exists on disk, but not in <tag>", and the drill
+          # dies before it has started anything - reporting a rename as if the
+          # previous release were unbuildable.
+          #
+          # So each file is asked for under the name it had THEN. The rename map
+          # comes from git rather than from a list here, which means the next
+          # rename needs no change to this workflow.
+          renames="$(git diff --name-status --find-renames "$prev" HEAD | awk '$1 ~ /^R/ { print $3 "=" $2 }')"
           args=""
-          for f in $files; do git show "$prev:$f" > ".drill-$f"; args="$args -f .drill-$f"; done
+          for f in $files; do
+            src="$(printf '%s\n' "$renames" | sed -n "s|^$f=||p" | head -1)"
+            [ -n "$src" ] && echo "  $f was $src in $prev"
+            git show "$prev:${src:-$f}" > ".drill-$f"
+            args="$args -f .drill-$f"
+          done
           echo "starting $prev on this project's volumes"
           for f in $files; do docker compose -f ".drill-$f" -p outline up -d; done
           bad=""

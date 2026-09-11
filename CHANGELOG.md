@@ -83,6 +83,14 @@ _(no unreleased changes yet)_
 
 ### Fixed
 
+- **The upgrade drill follows renames.** It reconstructs the previous release
+  by asking git for each compose file at that tag — and this release renames
+  one of them, so `git show v1.6.2:03-outline-garage-…` failed with "exists on
+  disk, but not in v1.6.2" and the drill died before starting anything,
+  reporting a rename as though the previous release were unbuildable. It now
+  reads the rename map out of `git diff --name-status --find-renames` and asks
+  for each file under the name it had then, which means the next rename needs
+  no change to the workflow.
 - **The upgrade drill keeps the 1.x variables it needs.** That drill starts the
   previous release on this run's volumes with this run's `.env`, which is the
   whole reason it catches data-path regressions — and 1.x still wants the MinIO
