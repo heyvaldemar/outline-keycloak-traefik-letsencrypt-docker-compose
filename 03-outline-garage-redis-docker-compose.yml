@@ -9,7 +9,8 @@ x-images:
   outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}}
   outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:${OUTLINE_IMAGE_VERSION:-1.10.1@sha256:832051f039b446c87aa23929cf92c00980c66aaa2d744d118c48c016ec816ad8}}
   redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7}}
-  minio: &minio-image ${OUTLINE_MINIO_IMAGE_TAG:-minio/minio:${OUTLINE_MINIO_IMAGE_VERSION:-RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}}
+  garage: &garage-image ${OUTLINE_GARAGE_IMAGE_TAG:-dxflrs/garage:${OUTLINE_GARAGE_IMAGE_VERSION:-v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020}}
+  backups: &backups-image ${OUTLINE_BACKUPS_IMAGE_TAG:-alpine:${OUTLINE_BACKUPS_IMAGE_VERSION:-3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce}}
 
 networks:
   outline-network:
@@ -20,7 +21,14 @@ networks:
     external: true
 
 volumes:
+  # MinIO's volume is deliberately still declared. An upgrade from 1.x leaves
+  # the old objects in it, and the migration script reads them from here; a
+  # compose file that dropped the name would leave that data addressable only
+  # by a docker volume id somebody has to go and find. Remove it once the
+  # migration is done and verified.
   minio-data:
+  garage-meta:
+  garage-data:
   outline-postgres:
   outline-postgres-backup:
   outline-data-backups:
@@ -104,144 +112,121 @@ services:
       start_period: 60s
     restart: unless-stopped
 
-  minio:
-    image: *minio-image
+  # Object storage for attachments. Garage, not MinIO — see garage/garage.toml
+  # for why, and for the list of S3 operations that were exercised against it
+  # before the swap.
+  garage:
+    image: *garage-image
     # Hardening: no privilege escalation via setuid binaries
     security_opt:
       - no-new-privileges:true
-    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_MINIO_MEMORY_LIMIT=2g);
+    # A single static binary serving HTTP and writing files. No Linux
+    # capability is needed for either.
+    cap_drop:
+      - ALL
+    # Garage keeps its metadata in SQLite. A kill during a write leaves it to
+    # be recovered on the next start.
+    stop_grace_period: ${OUTLINE_GARAGE_STOP_GRACE_PERIOD:-60s}
+    # Resource limits as .env-overridable defaults (e.g. OUTLINE_KEYCLOAK_GARAGE_MEMORY_LIMIT=2g);
     # the override survives every git pull.
     deploy:
       resources:
         limits:
-          memory: ${OUTLINE_KEYCLOAK_MINIO_MEMORY_LIMIT:-1g}
-          cpus: "${OUTLINE_KEYCLOAK_MINIO_CPU_LIMIT:-1.0}"
+          memory: ${OUTLINE_KEYCLOAK_GARAGE_MEMORY_LIMIT:-1g}
+          cpus: "${OUTLINE_KEYCLOAK_GARAGE_CPU_LIMIT:-1.0}"
         reservations:
-          memory: ${OUTLINE_KEYCLOAK_MINIO_MEMORY_RESERVATION:-128m}
-          cpus: "${OUTLINE_KEYCLOAK_MINIO_CPU_RESERVATION:-0.25}"
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        minio server /data --console-address :9001 &
-        sleep 20
-        mc config host add minio http://localhost:9000 ${OUTLINE_MINIO_ADMIN:-minioadmin} ${OUTLINE_MINIO_ADMIN_PASSWORD:?set in .env - see .env.example for generation command}
-        mc mb minio/${OUTLINE_MINIO_BUCKET_NAME:-data}
-        mc admin user add minio ${OUTLINE_MINIO_USER:-bucket.data} ${OUTLINE_MINIO_USER_PASSWORD:?set in .env - see .env.example for generation command}
-        cat > outline-policy.json <<-EOF
-          {
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Effect": "Allow",
-                "Action": [
-                  "s3:GetBucketLocation",
-                  "s3:ListBucket",
-                  "s3:ListBucketMultipartUploads"
-                ],
-                "Resource": [
-                  "arn:aws:s3:::${OUTLINE_MINIO_BUCKET_NAME:-data}"
-                ]
-              },
-              {
-                "Action": [
-                  "s3:AbortMultipartUpload",
-                  "s3:DeleteObject",
-                  "s3:GetObject",
-                  "s3:ListMultipartUploadParts",
-                  "s3:PutObject",
-                  "s3:GetObject"
-                ],
-                "Effect": "Allow",
-                "Resource": [
-                  "arn:aws:s3:::${OUTLINE_MINIO_BUCKET_NAME:-data}/*"
-                ],
-                "Sid": ""
-              }
-            ]
-          }
-        EOF
-        cat > data-public.json <<-EOF
-          {
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Effect": "Allow",
-                "Principal": {
-                "AWS": [
-                  "*"
-                ]
-              },
-                "Action": [
-                  "s3:GetObject",
-                  "s3:ListMultipartUploadParts"
-                ],
-                "Resource": [
-                  "arn:aws:s3:::data/public/*"
-                ]
-              }
-            ]
-          }
-        EOF
-        mc anonymous set-json data-public.json minio/${OUTLINE_MINIO_BUCKET_NAME:-data}
-        mc admin policy create minio OutlineAppFullAccess outline-policy.json
-        mc admin policy attach minio OutlineAppFullAccess --user=${OUTLINE_MINIO_USER:-bucket.data}
-        tail -f /dev/null
-    volumes:
-      - minio-data:/data
+          memory: ${OUTLINE_KEYCLOAK_GARAGE_MEMORY_RESERVATION:-128m}
+          cpus: "${OUTLINE_KEYCLOAK_GARAGE_CPU_RESERVATION:-0.25}"
     environment:
-      MINIO_ROOT_USER: ${OUTLINE_MINIO_ADMIN:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${OUTLINE_MINIO_ADMIN_PASSWORD}
-      MINIO_BROWSER_REDIRECT_URL: ${OUTLINE_MINIO_CONSOLE_URL}
+      # Both read from the environment rather than written into garage.toml, so
+      # the secrets live in .env with everything else.
+      GARAGE_RPC_SECRET: ${OUTLINE_GARAGE_RPC_SECRET:?set in .env - see .env.example for generation command}
+      GARAGE_ADMIN_TOKEN: ${OUTLINE_GARAGE_ADMIN_TOKEN:?set in .env - see .env.example for generation command}
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
     networks:
       - outline-network
       - traefik-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      # The binary's own subcommand. There is no shell in this image to wrap it
+      # in, which is also why the bootstrap below talks to the admin API
+      # instead of running a script here.
+      test: ["CMD", "/garage", "status"]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 60s
+      retries: 6
+      start_period: 20s
     labels:
       # Enable Traefik for this container
       - "traefik.enable=true"
       # Match incoming requests on a specific hostname
-      - "traefik.http.routers.minio-api.rule=Host(`${OUTLINE_MINIO_HOSTNAME}`)"
+      - "traefik.http.routers.garage-s3.rule=Host(`${OUTLINE_S3_HOSTNAME:?set in .env - see .env.example}`)"
       # Assign the router to a named Traefik service
-      - "traefik.http.routers.minio-api.service=minio-api"
+      - "traefik.http.routers.garage-s3.service=garage-s3"
       # Use the 'websecure' (HTTPS) entry point
-      - "traefik.http.routers.minio-api.entrypoints=websecure"
+      - "traefik.http.routers.garage-s3.entrypoints=websecure"
       # Define the internal container port for routing
-      - "traefik.http.services.minio-api.loadbalancer.server.port=9000"
+      - "traefik.http.services.garage-s3.loadbalancer.server.port=3900"
       # Enable TLS on this router
-      - "traefik.http.routers.minio-api.tls=true"
+      - "traefik.http.routers.garage-s3.tls=true"
       # Use Let's Encrypt for certificate management
-      - "traefik.http.routers.minio-api.tls.certresolver=letsencrypt"
-      # Pass the original Host header to the container
-      - "traefik.http.services.minio-api.loadbalancer.passhostheader=true"
-      # Apply a compression middleware
-      - "traefik.http.routers.minio-api.middlewares=compresstraefik"
-      # Match incoming requests on a specific hostname
-      - "traefik.http.routers.minio-console.rule=Host(`${OUTLINE_MINIO_CONSOLE_HOSTNAME}`)"
-      # Assign the router to a named Traefik service
-      - "traefik.http.routers.minio-console.service=minio-console"
-      # Use the 'websecure' (HTTPS) entry point
-      - "traefik.http.routers.minio-console.entrypoints=websecure"
-      # Define the internal container port for routing
-      - "traefik.http.services.minio-console.loadbalancer.server.port=9001"
-      # Enable TLS on this router
-      - "traefik.http.routers.minio-console.tls=true"
-      # Use Let's Encrypt for certificate management
-      - "traefik.http.routers.minio-console.tls.certresolver=letsencrypt"
-      # Pass the original Host header to the container
-      - "traefik.http.services.minio-console.loadbalancer.passhostheader=true"
-      # Apply a compression middleware
-      - "traefik.http.routers.minio-console.middlewares=compresstraefik"
-      # Define settings for the compression middleware
-      - "traefik.http.middlewares.compresstraefik.compress=true"
+      - "traefik.http.routers.garage-s3.tls.certresolver=letsencrypt"
+      # Pass the original Host header to the container. This one is not
+      # optional: an S3 SigV4 signature covers the Host header, so a proxy that
+      # rewrote it would invalidate every presigned URL Outline hands out.
+      - "traefik.http.services.garage-s3.loadbalancer.passhostheader=true"
       # Specify which Docker network Traefik should use for routing
       - "traefik.docker.network=traefik-network"
+      # DELIBERATELY NO COMPRESSION on this router. Attachments are already
+      # compressed formats, and gzipping a response whose bytes a client is
+      # about to checksum is a way to spend CPU making files marginally larger.
     restart: unless-stopped
+
+  # Creates the storage layout, the access key and the bucket, then exits.
+  #
+  # It talks to Garage's admin API over HTTP rather than running the `garage`
+  # binary, and that is forced rather than preferred: the Garage image is built
+  # FROM scratch and contains nothing but that binary — no /bin/sh — so an init
+  # container with a script in it cannot start at all. The admin API needs no
+  # shell on the other side.
+  #
+  # It is idempotent. On a stack that is already set up it changes nothing and
+  # says what it found, which is what makes it safe to leave in the dependency
+  # chain of every `up -d`.
+  garage-init:
+    image: *backups-image
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          memory: ${OUTLINE_GARAGE_INIT_MEMORY_LIMIT:-64m}
+          cpus: "${OUTLINE_GARAGE_INIT_CPU_LIMIT:-0.5}"
+        reservations:
+          memory: ${OUTLINE_GARAGE_INIT_MEMORY_RESERVATION:-8m}
+          cpus: "${OUTLINE_GARAGE_INIT_CPU_RESERVATION:-0.1}"
+    entrypoint: ["/bin/sh", "/garage-init.sh"]
+    environment:
+      GARAGE_HOST: garage
+      GARAGE_ADMIN_TOKEN: ${OUTLINE_GARAGE_ADMIN_TOKEN:?set in .env - see .env.example for generation command}
+      GARAGE_ZONE: ${OUTLINE_GARAGE_ZONE:-default}
+      GARAGE_CAPACITY: ${OUTLINE_GARAGE_CAPACITY:-100000000000}
+      S3_ACCESS_KEY: ${OUTLINE_S3_ACCESS_KEY:?set in .env - see .env.example for generation command}
+      S3_SECRET_KEY: ${OUTLINE_S3_SECRET_KEY:?set in .env - see .env.example for generation command}
+      S3_KEY_NAME: ${OUTLINE_S3_KEY_NAME:-outline}
+      S3_BUCKET: ${OUTLINE_S3_BUCKET_NAME:-data}
+    volumes:
+      - ./garage/garage-init.sh:/garage-init.sh:ro
+    networks:
+      - outline-network
+    restart: "no"
+    depends_on:
+      garage:
+        condition: service_healthy
 
   outline:
     image: *outline-image
@@ -268,14 +253,32 @@ services:
       UTILS_SECRET: ${OUTLINE_UTILS_SECRET:?set in .env - see .env.example for generation command}
       FORCE_HTTPS: 'false'
       ENABLE_UPDATES: 'true'
-      AWS_REGION: eu-east-1
-      AWS_ACCESS_KEY_ID: ${OUTLINE_MINIO_USER:-bucket.data}
-      AWS_SECRET_ACCESS_KEY: ${OUTLINE_MINIO_USER_PASSWORD}
-      AWS_S3_UPLOAD_BUCKET_URL: ${OUTLINE_AWS_S3_UPLOAD_BUCKET_URL}
-      AWS_S3_ACCELERATE_URL: ${OUTLINE_AWS_S3_UPLOAD_BUCKET_URL}
-      AWS_S3_UPLOAD_BUCKET_NAME: ${OUTLINE_MINIO_BUCKET_NAME:-data}
-      AWS_S3_UPLOAD_MAX_SIZE: ${OUTLINE_AWS_S3_UPLOAD_MAX_SIZE}
-      AWS_S3_FORCE_PATH_STYLE: 'false'
+      # Set explicitly, because the alternative is relying on a default that
+      # upstream's own .env.sample contradicts. The image's compiled default
+      # when FILE_STORAGE is unset is "s3", while the sample file shows
+      # FILE_STORAGE=local - so the template was right and looked wrong, and a
+      # future change to that default would move every attachment to a
+      # directory inside the container without saying anything.
+      FILE_STORAGE: s3
+      # Garage's own region name. It is not an AWS region and never reaches
+      # AWS; it is part of the SigV4 string to sign, so it has to match what
+      # garage.toml declares.
+      AWS_REGION: garage
+      AWS_ACCESS_KEY_ID: ${OUTLINE_S3_ACCESS_KEY:?set in .env - see .env.example for generation command}
+      AWS_SECRET_ACCESS_KEY: ${OUTLINE_S3_SECRET_KEY:?set in .env - see .env.example for generation command}
+      AWS_S3_UPLOAD_BUCKET_URL: https://${OUTLINE_S3_HOSTNAME:?set in .env - see .env.example}
+      AWS_S3_ACCELERATE_URL: https://${OUTLINE_S3_HOSTNAME:?set in .env - see .env.example}
+      AWS_S3_UPLOAD_BUCKET_NAME: ${OUTLINE_S3_BUCKET_NAME:-data}
+      # Renamed upstream. AWS_S3_UPLOAD_MAX_SIZE still works and logs a
+      # deprecation on every start; the .env key is unchanged so nobody has to
+      # edit a file to stop seeing it.
+      FILE_STORAGE_UPLOAD_MAX_SIZE: ${OUTLINE_AWS_S3_UPLOAD_MAX_SIZE}
+      # PATH STYLE, and this changed with the storage. Virtual-hosted style
+      # puts the bucket in a subdomain - data.s3.example.com - which behind one
+      # Traefik hostname needs a wildcard certificate and a wildcard DNS
+      # record. Path style keeps everything on the single hostname the
+      # certificate already covers.
+      AWS_S3_FORCE_PATH_STYLE: 'true'
       AWS_S3_ACL: private
       OIDC_CLIENT_ID: outline
       OIDC_CLIENT_SECRET: ${OUTLINE_OIDC_CLIENT_SECRET:?set in .env - see .env.example}
@@ -324,8 +327,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      garage:
         condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
 
   backups-outline:
     image: *outline-postgres-image

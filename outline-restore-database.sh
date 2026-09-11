@@ -17,7 +17,7 @@ set -euo pipefail
 # service in this stack deploys under one project ("outline" in the README), so
 # a filter like "name=keycloak-keycloak" matches nothing and the script then
 # runs docker stop and docker exec against an empty id.
-COMPOSE_FILE="03-outline-minio-redis-docker-compose.yml"
+COMPOSE_FILE="03-outline-garage-redis-docker-compose.yml"
 PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
 
 resolve_container() {

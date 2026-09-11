@@ -9,6 +9,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [2.0.0] - 2026-09-11
+
+### Changed
+
+- **MinIO is replaced by Garage. This is why the major version moved, and an
+  upgrade needs one command you have to run yourself.** MinIO's community
+  server was archived on 25 April 2026: the repository is read-only, there will
+  be no further releases, and the last published container image is
+  `RELEASE.2025-09-07`. Keeping a team's documents behind a storage server that
+  will never be patched again is not a trade-off, it is a deadline.
+
+  **Existing attachments do not move by themselves.** They are in the
+  `minio-data` volume, which nothing in this stack starts against any more.
+  `outline-minio-to-garage.sh` copies them: it starts a throwaway MinIO against
+  the old volume, copies every object through the S3 API on both sides, and has
+  `rclone` compare the two afterwards. It writes nothing to the old volume and
+  deletes nothing from it, so it is safe to re-run and safe to abandon half
+  way. The README section is called *Upgrading from 1.x*.
+
+  Garage was not assumed to be a drop-in. Every S3 operation Outline performs
+  was exercised against it before the swap and is now asserted on every CI run,
+  through Traefik on the public hostname rather than against the container:
+
+  | operation | why it is in the list |
+  | :--- | :--- |
+  | presigned POST | Outline's default upload method — the browser posts a signed policy |
+  | presigned PUT | the alternative upload method |
+  | presigned GET | how an attachment reaches a reader |
+  | multipart upload | large files: create, upload, list, complete, abort |
+  | bucket CORS | a browser uploading cross-origin needs it settable |
+  | direct put/get/delete with `ACL: private` | what the server itself does |
+
+  Through Traefik on purpose: a SigV4 signature covers the Host header, so a
+  proxy that rewrote it would invalidate every presigned URL Outline hands out.
+  That is what `passhostheader` is for, and the contract test is what would
+  notice if it were removed.
+
+  CI also proves the migration rather than describing it. Every build creates
+  the old volume, fills it through a real MinIO, runs the shipped script, and
+  reads the objects back out of Garage.
+
+- **`03-outline-minio-redis-docker-compose.yml` is now
+  `03-outline-garage-redis-docker-compose.yml`.** A file named after a
+  component it no longer runs is a small lie that costs a reader real time.
+  Every command in the README, `update.sh`, the restore scripts and CI moved
+  with it.
+
+- **There is no storage console any more, and no second hostname for it.**
+  Garage has no web interface. `mc` or any S3 client is how you look inside a
+  bucket now, and `OUTLINE_MINIO_CONSOLE_HOSTNAME` and
+  `OUTLINE_MINIO_CONSOLE_URL` are gone. Four DNS records instead of five.
+
+- **`AWS_S3_FORCE_PATH_STYLE` is now `true`.** Virtual-hosted style puts the
+  bucket in a subdomain, which behind one Traefik hostname needs a wildcard
+  certificate and a wildcard DNS record. Path style keeps everything on the
+  hostname the certificate already covers.
+
+### Added
+
+- **A Garage bootstrap that runs as part of `up -d`**, rather than a script you
+  have to remember afterwards. It creates the storage layout, imports the
+  access key from `.env` and creates the bucket, then exits; Outline waits for
+  it to have exited successfully. It is idempotent — on a configured stack it
+  changes nothing and says what it found.
+
+  It talks to Garage's admin API over HTTP rather than running the `garage`
+  binary, and that is forced: the Garage image is built `FROM scratch` and
+  contains nothing but that binary, so an init container with a script in it
+  cannot start at all. The key is *imported* rather than created, because
+  `CreateKey` invents a pair that a human would then have to paste back into
+  `.env` after every rebuild.
+
+### Fixed
+
+- **`FILE_STORAGE` is now set explicitly to `s3`.** It was never set, and the
+  stack was right anyway — the image's compiled default when the variable is
+  absent is `s3`. But upstream's own `.env.sample` shows `FILE_STORAGE=local`,
+  so the template looked wrong while being correct, and a future change to that
+  default would have moved every attachment into a directory inside the
+  container without saying anything.
+- **`AWS_S3_UPLOAD_MAX_SIZE` is deprecated upstream** and logged a warning on
+  every start. It is `FILE_STORAGE_UPLOAD_MAX_SIZE` now. The `.env` key is
+  unchanged, so nobody has to edit a file to stop seeing it.
+
 ## [1.6.2] - 2026-09-10
 
 ### Changed
@@ -168,7 +252,7 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.2...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.0.0...HEAD
 [1.6.2]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...v1.6.0

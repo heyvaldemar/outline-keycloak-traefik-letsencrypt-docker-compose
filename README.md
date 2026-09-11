@@ -17,7 +17,7 @@
 - [Security Notes](#security-notes)
 - [About the maintainer](#about-the-maintainer)
 
-This repository deploys Outline (team wiki) with Keycloak as its OIDC identity provider, MinIO for file storage, PostgreSQL ×2 and Redis, all behind Traefik with automatic Let's Encrypt TLS: three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
+This repository deploys Outline (team wiki) with Keycloak as its OIDC identity provider, Garage for file storage, PostgreSQL ×2 and Redis, all behind Traefik with automatic Let's Encrypt TLS: three compose files deployed in order, with scheduled backups and restore scripts. The full self-hosted knowledge-base experience with real SSO at `https://your-domain`.
 
 📙 Full narrative installation guide on the blog: [heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/](https://www.heyvaldemar.com/install-outline-and-keycloak-using-docker-compose/).
 
@@ -27,7 +27,7 @@ This repository deploys Outline (team wiki) with Keycloak as its OIDC identity p
 |------|-----------|----------------------|-----------------|
 | Real SSO out of the box | ✅ Keycloak OIDC | ❌ bring your own IdP | Hours of wiring |
 | TLS via Let's Encrypt, auto-renewed | ✅ Traefik ACME | ❌ | Manual certbot |
-| S3-compatible file storage included | ✅ MinIO | ❌ external S3 | Separate setup |
+| S3-compatible file storage included | ✅ Garage | ❌ external S3 | Separate setup |
 | Scheduled backups (2 DBs + files) + restore scripts | ✅ | ❌ | Manual cron |
 | All images pinned by `sha256` digest | ✅ 7 pins | ❌ floating | Rare |
 | Weekly pin-freshness check in CI | ✅ | ❌ | Rare |
@@ -39,7 +39,7 @@ Nine services across three compose files, deployed in strict order. Heavier than
 
 - **A Linux server** with a public IP and ~4 GB free RAM for the full stack.
 - **Docker Engine 24+ and Docker Compose 2.20+.**
-- **A domain you control,** with five `A` records pointing at your server's public IP: Outline, Keycloak, MinIO S3, MinIO console, and the Traefik dashboard (see `.env.example`). DNS must propagate before deploy.
+- **A domain you control,** with four `A` records pointing at your server's public IP: Outline, Keycloak, the S3 endpoint, and the Traefik dashboard.
 - **Ports 80 and 443 open** on the server's firewall.
 
 ## Getting started
@@ -63,10 +63,10 @@ $EDITOR .env
 # 4. Deploy in order
 docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p outline up -d
 docker compose -f 02-keycloak-outline-docker-compose.yml -p outline up -d
-docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d
+docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline up -d
 ```
 
-Keycloak, MinIO, and Outline come up with fresh Let's Encrypt certificates. Outline's login page appears immediately; signing in works after the realm step below.
+Keycloak, Garage, and Outline come up with fresh Let's Encrypt certificates. Outline's login page appears immediately; signing in works after the realm step below.
 
 ## Configuring the Keycloak realm for Outline
 
@@ -75,7 +75,7 @@ Keycloak, MinIO, and Outline come up with fresh Let's Encrypt certificates. Outl
 3. In the realm, create a client `outline`: client type OpenID Connect, client authentication ON, valid redirect URI `https://${OUTLINE_HOSTNAME}/auth/oidc.callback`.
 4. Copy the client secret (client → Credentials) into `OUTLINE_OIDC_CLIENT_SECRET` in `.env`.
 5. Create your users in the realm (email required: Outline maps accounts by the email claim).
-6. Recreate Outline: `docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d --force-recreate`.
+6. Recreate Outline: `docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline up -d --force-recreate`.
 
 Sign in on Outline via the Keycloak button. First user in becomes the workspace admin.
 
@@ -88,8 +88,9 @@ docker ps --filter name=outline
 # Keycloak health:
 docker inspect -f '{{.State.Health.Status}}' "$(docker ps -qf name=keycloak | head -1)"
 
-# MinIO liveness through Traefik:
-curl -fsS "https://${OUTLINE_MINIO_HOSTNAME}/minio/health/live" -o /dev/null -w "%{http_code}\n"
+# Storage through Traefik — an unsigned request is refused, which is the
+# right answer and proves the route and the certificate:
+curl -sk -o /dev/null -w "%{http_code}\n" "https://${OUTLINE_S3_HOSTNAME}/data"
 
 # Outline front page:
 curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
@@ -106,10 +107,10 @@ curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
 
 - **Outline** latest stable (1.10 line): documents, collections, search, real-time collaboration.
 - **Keycloak 26.7** as the OIDC provider: users, groups, MFA, federation if you need it.
-- **MinIO** S3-compatible storage for uploads, with its own console.
+- **Garage** S3-compatible storage for uploads. No console: `mc` or any S3 client is how you look inside the bucket.
 - **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and Redis 7.4.
 - **Traefik v3** with automatic HTTPS for all five hostnames.
-- **Scheduled backups**: both databases (`pg_dump | gzip`) and MinIO data (`tar.gz`), with retention pruning and three restore scripts.
+- **Scheduled backups**: both databases (`pg_dump | gzip`) and Outline's attachments (`tar.gz`), with retention pruning and three restore scripts.
 - **Credentials required at deploy time**: compose fails fast if `.env` is incomplete.
 
 ## Supply chain trust
@@ -121,7 +122,7 @@ Two override levels exist per image. `<PREFIX>_IMAGE_VERSION` in `.env` swaps on
 - [`traefik`](https://hub.docker.com/_/traefik), [`postgres`](https://hub.docker.com/_/postgres) ×2, [`redis`](https://hub.docker.com/_/redis): Docker Hub official images
 - [`quay.io/keycloak/keycloak`](https://quay.io/repository/keycloak/keycloak): Keycloak upstream
 - [`outlinewiki/outline`](https://hub.docker.com/r/outlinewiki/outline): Outline upstream
-- [`minio/minio`](https://hub.docker.com/r/minio/minio): MinIO upstream
+- [`dxflrs/garage`](https://hub.docker.com/r/dxflrs/garage): Garage upstream
 
 The daily `check-pin-freshness` CI job re-resolves all seven pins against their registries and compares the pinned Keycloak, Outline, and Traefik versions against the latest upstream releases. CI runs on every push, pull request, and every day at 06:00 UTC. GitHub Actions are pinned by commit SHA; Dependabot keeps those fresh.
 
@@ -129,15 +130,40 @@ The daily `check-pin-freshness` CI job re-resolves all seven pins against their 
 
 - [ ] **Strong secrets everywhere**: six generated passwords/secrets in `.env`; regenerate the Traefik dashboard hash per deployment.
 - [ ] **Complete the realm step** and disable Keycloak's bootstrap admin after creating named admins.
-- [ ] **Restrict MinIO console exposure** if you don't need it publicly.
+- [ ] **Point the S3 hostname at this server.** Presigned URLs are signed over it, so it has to be the address browsers use.
 - [ ] **Host-mount the backup volumes** for disaster recovery.
 - [ ] **Verify Let's Encrypt certs** for all five hostnames in the Traefik logs.
 - [ ] **Back up before upgrades**: Keycloak and Outline both migrate schemas forward only.
-- [ ] **Know the restore procedure.** Three scripts: Keycloak DB, Outline DB, MinIO data.
+- [ ] **Know the restore procedure.** Three scripts: Keycloak DB, Outline DB, Outline attachments.
+
+## Upgrading from 1.x: the storage changed
+
+v2.0.0 replaces MinIO with Garage, and **your existing attachments do not move by themselves.** They are in the `minio-data` volume, which this stack no longer starts anything against.
+
+MinIO's community server was archived on 25 April 2026: read-only repository, no further releases, and the last published container image is `RELEASE.2025-09-07`. Keeping a team's documents behind a storage server that will never be patched again is not a trade-off, it is a deadline. Garage is a single binary built for this shape of deployment, and every S3 operation Outline performs was exercised against it before the swap — `tests/s3-contract.py` is that check, and CI runs it on every build.
+
+What you give up is the MinIO console. There is no web interface for Garage; `mc` or any S3 client is how you look inside a bucket now.
+
+```bash
+# 1. Update and start. Garage comes up empty; nothing is lost.
+./update.sh --allow-major
+# 2. See what would move, without moving it.
+./outline-minio-to-garage.sh --dry-run
+# 3. Move it.
+./outline-minio-to-garage.sh
+```
+
+The migration starts a throwaway MinIO against the old volume, copies every object through the S3 API on both sides, and then has `rclone` compare the two. It writes nothing to the old volume and deletes nothing from it, so it is safe to re-run and safe to abandon half way. Expect `rclone` to report that some hashes could not be checked — MinIO and Garage compute ETags differently, so it falls back to comparing sizes. The line that matters is `0 differences found`.
+
+**Keep the old volume until you have opened a few documents with attachments and watched the images load.** Then `docker volume rm <project>_minio-data`.
+
+Do it before anyone uploads anything new: the copy is one-way, so an attachment added to Garage in the meantime is fine, but one added to MinIO after the migration would be left behind.
+
+CI proves this path rather than describing it. Every build creates the old volume, fills it through a real MinIO, runs the shipped script, and reads the objects back out of Garage.
 
 ## Backups
 
-Two backup sidecars run dump → prune → sleep loops: one for the Keycloak database, one for the Outline database + MinIO data directory. All knobs configured via `.env` with compose-level defaults (30-minute warm-up, 24-hour interval, 7-day retention).
+Two backup sidecars run dump → prune → sleep loops: one for the Keycloak database, one for the Outline database and its attachments. All knobs configured via `.env` with compose-level defaults (30-minute warm-up, 24-hour interval, 7-day retention).
 
 Each cycle logs `Database backup OK: <file> (<bytes> bytes)` or `Database backup FAILED` (the same for the data archive where there is one). A failed dump is kept as `<file>.failed` for diagnosis and never overwrites a good backup. Grep the log for `FAILED` from your monitoring.
 
@@ -178,14 +204,14 @@ The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-tr
 1. **Lint**: shellcheck on all three restore scripts, actionlint on the workflow.
 2. **Trivy scans** of six unique pinned images (CRITICAL/HIGH, SARIF to the Security tab).
 3. **Pin freshness** (daily/manual): digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
-4. **Deploy-and-test**: boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, MinIO liveness through Traefik, and the Outline login page through Traefik.
+4. **Deploy-and-test**: boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, the S3 contract Outline depends on proven through Traefik, the MinIO migration proven on real objects, Outline liveness through Traefik, and the Outline login page through Traefik.
 
 A green run is the authoritative proof that the template deploys end-to-end.
 
 ## Security notes
 
 - Credentials are read from `.env` at deploy time; `.env` is gitignored and compose fails fast on missing required variables.
-- **Pre-rotation advisory.** Releases before v1.0.0 (2026-08-31) shipped a tracked `.env` with generated-looking passwords for Keycloak, Outline, and MinIO. Rotate all of them if your deployment reused them.
+- **Pre-rotation advisory.** Releases before v1.0.0 (2026-08-31) shipped a tracked `.env` with generated-looking passwords for Keycloak, Outline, and the object storage of the day (MinIO, until v2.0.0). Rotate all of them if your deployment reused them.
 - Databases and Redis listen only on internal networks.
 - Upstream image digests are pinned; the daily freshness job flags drift loudly.
 

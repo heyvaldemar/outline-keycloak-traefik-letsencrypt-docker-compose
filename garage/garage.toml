@@ -1,0 +1,48 @@
+# Garage — S3-compatible object storage for Outline's attachments.
+#
+# WHY GARAGE AND NOT MINIO. MinIO's community server was archived on
+# 25 April 2026: the repository is read-only, the last published container
+# image is RELEASE.2025-09-07, and there will not be another. Putting a team's
+# documents behind a storage server that will never be patched again is not a
+# trade-off, it is a deadline.
+#
+# Garage is a single binary built for exactly this shape of deployment: one
+# node, one config file, semver tags, and an S3 implementation complete enough
+# for what Outline asks of it. Every operation the old MinIO policy granted was
+# exercised against it before this file was written - direct PUT and GET,
+# presigned PUT and GET, multipart upload with list and complete, abort,
+# delete, listing, and bucket CORS.
+#
+# The alternatives were weighed rather than assumed: RustFS is still a beta,
+# and SeaweedFS runs master, volume, filer and s3 as four processes to serve
+# what is here one node.
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+
+# sqlite rather than lmdb: one node, modest object counts, and a single file
+# that the backup sidecar can archive and the restore script can put back.
+db_engine = "sqlite"
+
+# One node means one copy. Redundancy for this data comes from the backup that
+# runs beside it, not from Garage replicating to itself.
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+# Virtual-hosted-style addressing would put the bucket in a subdomain, which
+# behind one Traefik hostname needs a wildcard certificate and a wildcard DNS
+# record. Outline is set to path style instead - AWS_S3_FORCE_PATH_STYLE - so
+# this domain is never used and is present only because Garage wants the key.
+root_domain = ".s3.garage.internal"
+
+[admin]
+api_bind_addr = "[::]:3903"
+# NO admin_token here on purpose. Garage reads GARAGE_ADMIN_TOKEN from the
+# environment, so the secret stays in .env with every other secret rather than
+# being baked into a file this repository tracks. Verified both ways: the
+# environment token authenticates, and any other token is answered 403.

@@ -22,7 +22,7 @@ cd "$(dirname "$0")"
 
 # Three compose files, applied in order like the CI job does: Traefik first,
 # then Keycloak, then Outline with its MinIO and Redis.
-COMPOSE_FILES=(01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-minio-redis-docker-compose.yml)
+COMPOSE_FILES=(01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml)
 PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
 DRY_RUN=false
 ALLOW_MAJOR=false

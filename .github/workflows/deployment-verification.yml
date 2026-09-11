@@ -74,13 +74,15 @@ jobs:
             file: 02-keycloak-outline-docker-compose.yml
           - name: outline
             env_var: OUTLINE_IMAGE_TAG
-            file: 03-outline-minio-redis-docker-compose.yml
+            file: 03-outline-garage-redis-docker-compose.yml
           - name: redis
             env_var: OUTLINE_REDIS_IMAGE_TAG
-            file: 03-outline-minio-redis-docker-compose.yml
-          - name: minio
-            env_var: OUTLINE_MINIO_IMAGE_TAG
-            file: 03-outline-minio-redis-docker-compose.yml
+            file: 03-outline-garage-redis-docker-compose.yml
+          - name: garage
+            env_var: OUTLINE_GARAGE_IMAGE_TAG
+          - name: backups
+            env_var: OUTLINE_BACKUPS_IMAGE_TAG
+            file: 03-outline-garage-redis-docker-compose.yml
 
     steps:
       - name: Checkout repository
@@ -163,10 +165,11 @@ jobs:
           check_digest TRAEFIK_IMAGE_TAG 01-traefik-outline-letsencrypt-docker-compose.yml
           check_digest KEYCLOAK_POSTGRES_IMAGE_TAG 02-keycloak-outline-docker-compose.yml
           check_digest KEYCLOAK_IMAGE_TAG 02-keycloak-outline-docker-compose.yml
-          check_digest OUTLINE_POSTGRES_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
-          check_digest OUTLINE_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
-          check_digest OUTLINE_REDIS_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
-          check_digest OUTLINE_MINIO_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml
+          check_digest OUTLINE_POSTGRES_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml
+          check_digest OUTLINE_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml
+          check_digest OUTLINE_REDIS_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml
+          check_digest OUTLINE_GARAGE_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml
+          check_digest OUTLINE_BACKUPS_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml
           exit "$status"
 
       - name: Compare pinned app versions against the latest releases
@@ -193,7 +196,7 @@ jobs:
             fi
           }
           check_gh KEYCLOAK_IMAGE_TAG 02-keycloak-outline-docker-compose.yml keycloak/keycloak
-          check_gh OUTLINE_IMAGE_TAG 03-outline-minio-redis-docker-compose.yml outline/outline
+          check_gh OUTLINE_IMAGE_TAG 03-outline-garage-redis-docker-compose.yml outline/outline
           pin="$(grep -m1 -oE '\$\{TRAEFIK_IMAGE_TAG:-.*' 01-traefik-outline-letsencrypt-docker-compose.yml | sed -E -e ':a' -e 's/\$\{[A-Z0-9_]+:-([^{}]*)\}/\1/' -e 'ta')"
           ref="${pin%%@*}"; pinned_minor="${ref##*:}"
           latest="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_API_TOKEN" https://api.github.com/repos/traefik/traefik/releases/latest | jq -r .tag_name)"; latest="${latest#v}"
@@ -204,7 +207,7 @@ jobs:
           exit "$status"
 
   deploy-and-test:
-    name: docker compose up x3 + Keycloak/MinIO/Outline smoke
+    name: docker compose up x3 + Keycloak/Garage/Outline smoke, and the MinIO migration
     runs-on: ubuntu-latest
     needs: lint
     timeout-minutes: 40
@@ -214,8 +217,7 @@ jobs:
     env:
       APP_HOSTNAME: outline.heyvaldemar.net
       KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
-      MINIO_HOST: minio.outline.heyvaldemar.net
-      MINIO_CONSOLE_HOST: console.minio.outline.heyvaldemar.net
+      S3_HOST: s3.outline.heyvaldemar.net
       APP_TRAEFIK_HOSTNAME: traefik.outline.heyvaldemar.net
 
     steps:
@@ -246,13 +248,14 @@ jobs:
           OUTLINE_SECRET_KEY=$(openssl rand -hex 32)
           OUTLINE_UTILS_SECRET=$(openssl rand -hex 32)
           OUTLINE_MINIO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
-          OUTLINE_MINIO_USER_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
           OUTLINE_OIDC_CLIENT_SECRET=ci-placeholder-secret
           OUTLINE_HOSTNAME=${APP_HOSTNAME}
           OUTLINE_URL=https://${APP_HOSTNAME}
-          OUTLINE_MINIO_HOSTNAME=${MINIO_HOST}
-          OUTLINE_MINIO_CONSOLE_HOSTNAME=${MINIO_CONSOLE_HOST}
-          OUTLINE_MINIO_CONSOLE_URL=https://${MINIO_CONSOLE_HOST}
+          OUTLINE_S3_HOSTNAME=${S3_HOST}
+          OUTLINE_S3_ACCESS_KEY=GK$(openssl rand -hex 12)
+          OUTLINE_S3_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_RPC_SECRET=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)
           OUTLINE_OIDC_AUTH_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/auth
           OUTLINE_OIDC_TOKEN_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/token
           OUTLINE_OIDC_USERINFO_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/userinfo
@@ -265,7 +268,7 @@ jobs:
 
       - name: Modify /etc/hosts for internal routing
         run: |
-          for h in "$APP_HOSTNAME" "$KEYCLOAK_HOST" "$MINIO_HOST" "$MINIO_CONSOLE_HOST" "$APP_TRAEFIK_HOSTNAME"; do
+          for h in "$APP_HOSTNAME" "$KEYCLOAK_HOST" "$S3_HOST" "$APP_TRAEFIK_HOSTNAME"; do
             echo "127.0.0.1 $h" | sudo tee -a /etc/hosts
           done
 
@@ -277,7 +280,7 @@ jobs:
         # which is what git pull and docker compose up -d do on a deployed
         # host. Every smoke check after judges the upgraded stacks.
         run: |
-          files="01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-minio-redis-docker-compose.yml"
+          files="01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml"
           prev="$(git ls-remote --tags --sort=-v:refname origin 'v*' | grep -v '\^{}' | head -1 | sed 's|.*refs/tags/||')"
           if [ -z "$prev" ]; then echo "no previous release: nothing to upgrade from"; exit 0; fi
           git fetch --depth=1 --quiet origin "refs/tags/$prev:refs/tags/$prev"
@@ -302,7 +305,7 @@ jobs:
             exit 1
           fi
           echo "$prev is up and healthy; stopping it and keeping its volumes"
-          for f in 03-outline-minio-redis-docker-compose.yml 02-keycloak-outline-docker-compose.yml 01-traefik-outline-letsencrypt-docker-compose.yml; do docker compose -f ".drill-$f" -p outline down; done
+          for f in 03-outline-garage-redis-docker-compose.yml 02-keycloak-outline-docker-compose.yml 01-traefik-outline-letsencrypt-docker-compose.yml; do docker compose -f ".drill-$f" -p outline down; done
           rm -f .drill-*.yml
           echo "the starts below are now an upgrade from $prev"
 
@@ -312,8 +315,8 @@ jobs:
       - name: Start Keycloak (file 02)
         run: docker compose -f 02-keycloak-outline-docker-compose.yml -p outline up -d
 
-      - name: Start Outline + MinIO + Redis (file 03)
-        run: docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline up -d
+      - name: Start Outline + Garage + Redis (file 03)
+        run: docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline up -d
 
       - name: Wait for Keycloak to report healthy
         run: |
@@ -324,14 +327,60 @@ jobs:
           done'
           echo "Keycloak healthy"
 
-      - name: Verify MinIO liveness through Traefik
+      - name: Garage is bootstrapped, and every S3 operation Outline needs works
+        # The assertion behind the storage swap. Outline uploads through a
+        # PRESIGNED POST by default, serves attachments through presigned GET,
+        # and uses multipart for large files - so "it speaks S3" is not the
+        # claim worth checking. Each of those is exercised here, through
+        # Traefik, with the credentials the init container imported.
+        #
+        # Through Traefik on purpose: a SigV4 signature covers the Host header,
+        # so a proxy that rewrote it would invalidate every presigned URL
+        # Outline hands a browser. That is what passhostheader is for, and this
+        # is what would notice if it were ever removed.
         run: |
+          dc3() { docker compose -f 03-outline-garage-redis-docker-compose.yml -p "$COMPOSE_PROJECT_NAME" "$@"; }
+          dc3 logs garage-init
+          [ "$(docker inspect "$(dc3 ps -aq garage-init)" --format '{{.State.ExitCode}}')" = "0" ] \
+            || { echo "::error::the Garage bootstrap did not succeed"; exit 1; }
+
           # shellcheck disable=SC2016
-          timeout 5m bash -c 'while ! curl -fsk "https://$MINIO_HOST/minio/health/live" >/dev/null; do
-            echo "Waiting for MinIO..."
-            sleep 10
-          done'
-          echo "MinIO live"
+          set -a; . ./.env; set +a
+          python3 -m pip install --quiet boto3
+          S3_HOST="$S3_HOST" \
+          AK="$OUTLINE_S3_ACCESS_KEY" SK="$OUTLINE_S3_SECRET_KEY" \
+          BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}" python3 tests/s3-contract.py
+
+      - name: The MinIO migration moves real objects into Garage
+        # An upgrade from 1.x leaves every attachment in the old MinIO volume,
+        # and a storage swap without a proven migration is a storage swap that
+        # loses files. So this creates the old volume, fills it through a real
+        # MinIO, runs the shipped migration script, and reads the objects back
+        # out of Garage.
+        run: |
+          set -a; . ./.env; set +a
+          vol="${COMPOSE_PROJECT_NAME}_minio-data"
+          docker volume create "$vol" > /dev/null
+          docker run -d --name ci-old-minio --network outline-network \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" \
+            -v "$vol:/data" minio/minio:RELEASE.2025-09-07T16-13-09Z server /data > /dev/null
+          # shellcheck disable=SC2016
+          timeout 3m bash -c 'until docker run --rm --network outline-network minio/minio:RELEASE.2025-09-07T16-13-09Z \
+            sh -c "curl -fsS http://ci-old-minio:9000/minio/health/live" >/dev/null 2>&1; do sleep 3; done'
+          docker run --rm --network outline-network --entrypoint sh \
+            -e P="$OUTLINE_MINIO_ADMIN_PASSWORD" minio/minio:RELEASE.2025-09-07T16-13-09Z -c '
+              mc alias set old http://ci-old-minio:9000 minioadmin "$P" > /dev/null
+              mc mb old/data > /dev/null 2>&1 || true
+              echo "written under MinIO before the upgrade" | mc pipe old/data/uploads/legacy.txt
+              head -c 300000 /dev/urandom | mc pipe old/data/uploads/legacy-big.bin'
+          docker rm -f ci-old-minio > /dev/null
+
+          chmod +x outline-minio-to-garage.sh
+          ./outline-minio-to-garage.sh
+
+          S3_HOST="$S3_HOST" AK="$OUTLINE_S3_ACCESS_KEY" SK="$OUTLINE_S3_SECRET_KEY" \
+          BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}" python3 tests/s3-migrated.py
 
       - name: Verify Outline serves its login page through Traefik
         # Outline boots and serves the login page (with the Keycloak
@@ -361,16 +410,16 @@ jobs:
         # definition, so this never races a dump that is still being written.
         run: |
           # shellcheck disable=SC2016
-          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
-          db=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
+          timeout 6m bash -c 'until docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -q "Database backup OK"; do echo "Waiting for the first backup cycle..."; sleep 10; done'
+          db=$(docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Database backup OK" | tail -1 | sed -E 's/.*Database backup OK: ([^ ]+) .*/\1/')
           echo "Database backup file: $db"
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
+          docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "gunzip -t '$db' && gunzip -c '$db' | head -5 | grep -qE 'PostgreSQL database dump'" && echo "Database backup valid: $db"
           # shellcheck disable=SC2016
-          timeout 6m bash -c 'until docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the data archive..."; sleep 10; done'
-          data=$(docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
+          timeout 6m bash -c 'until docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -qE "Data backup (OK|FAILED)"; do echo "Waiting for the data archive..."; sleep 10; done'
+          data=$(docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep "Data backup OK" | tail -1 | sed -E 's/.*Data backup OK: ([^ ]+) .*/\1/')
           [ -n "$data" ] || { echo "::error::no 'Data backup OK' line - the data archive failed"; exit 1; }
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "tar -tzf '$data' > /dev/null" && echo "Data backup valid: $data"
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
+          docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline exec -T backups-outline sh -c "tar -tzf '$data' > /dev/null" && echo "Data backup valid: $data"
+          docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs backups-outline 2>/dev/null | grep -i "backup FAILED" && { echo "::error::the backups log reports a failure"; exit 1; } || true
 
       - name: Run the backup/restore end-to-end tests
         env:
@@ -380,12 +429,12 @@ jobs:
       - name: Show container logs on failure
         if: failure()
         run: |
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline logs
+          docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline logs
           docker compose -f 02-keycloak-outline-docker-compose.yml -p outline logs
 
       - name: Shutdown all stacks
         if: always()
         run: |
-          docker compose -f 03-outline-minio-redis-docker-compose.yml -p outline down
+          docker compose -f 03-outline-garage-redis-docker-compose.yml -p outline down
           docker compose -f 02-keycloak-outline-docker-compose.yml -p outline down
           docker compose -f 01-traefik-outline-letsencrypt-docker-compose.yml -p outline down

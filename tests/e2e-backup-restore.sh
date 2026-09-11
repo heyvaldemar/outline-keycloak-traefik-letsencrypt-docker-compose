@@ -12,7 +12,7 @@
 set -uo pipefail
 
 KEYCLOAK_FILE="${KEYCLOAK_COMPOSE_FILE:-02-keycloak-outline-docker-compose.yml}"
-OUTLINE_FILE="${OUTLINE_COMPOSE_FILE:-03-outline-minio-redis-docker-compose.yml}"
+OUTLINE_FILE="${OUTLINE_COMPOSE_FILE:-03-outline-garage-redis-docker-compose.yml}"
 PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
 
 KEYCLOAK_DB_NAME="${KEYCLOAK_DB_NAME:-keycloakdb}"
