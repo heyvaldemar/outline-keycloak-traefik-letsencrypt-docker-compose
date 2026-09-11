@@ -283,3 +283,7 @@ xcuserdata/
 
 # End of https://www.toptal.com/developers/gitignore/api/git,macos,xcode,jekyll,packer,ansible,vagrant,windows,notepadpp,terraform,powershell,terragrunt,sublimetext,ansibletower,visualstudiocode,linux# Local environment with real credentials - never commit
 .env
+
+# Byte-compiled Python, produced by py_compile when the test scripts are checked.
+__pycache__/
+*.py[cod]
