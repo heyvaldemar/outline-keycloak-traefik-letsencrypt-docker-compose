@@ -83,6 +83,14 @@ _(no unreleased changes yet)_
 
 ### Fixed
 
+- **The upgrade drill keeps the 1.x variables it needs.** That drill starts the
+  previous release on this run's volumes with this run's `.env`, which is the
+  whole reason it catches data-path regressions — and 1.x still wants the MinIO
+  variables. The first build of this release dropped them and the drill failed
+  on a contract change that is intentional and documented, which is exactly how
+  that check stops being worth having. They are written now, and it is the
+  faithful thing to do besides: nobody deletes variables from `.env` the moment
+  a service goes away.
 - **`FILE_STORAGE` is now set explicitly to `s3`.** It was never set, and the
   stack was right anyway — the image's compiled default when the variable is
   absent is `s3`. But upstream's own `.env.sample` shows `FILE_STORAGE=local`,

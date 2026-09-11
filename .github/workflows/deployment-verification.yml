@@ -80,6 +80,7 @@ jobs:
             file: 03-outline-garage-redis-docker-compose.yml
           - name: garage
             env_var: OUTLINE_GARAGE_IMAGE_TAG
+            file: 03-outline-garage-redis-docker-compose.yml
           - name: backups
             env_var: OUTLINE_BACKUPS_IMAGE_TAG
             file: 03-outline-garage-redis-docker-compose.yml
@@ -247,7 +248,25 @@ jobs:
           OUTLINE_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
           OUTLINE_SECRET_KEY=$(openssl rand -hex 32)
           OUTLINE_UTILS_SECRET=$(openssl rand -hex 32)
+          # The MinIO lines here are deliberate, and not dead weight.
+          #
+          # The upgrade drill starts the PREVIOUS release on this run's
+          # volumes with this run's .env, and the previous release is 1.x,
+          # which still wants these. That is also what an upgrading
+          # deployment actually looks like: nobody deletes variables from
+          # .env the moment a service goes away. Dropping them would make the
+          # drill fail on a contract change that is intentional and
+          # documented, which is the one way to make that check useless.
+          #
+          # The admin password has a second job after the drill: the
+          # migration step fills the old volume through a real MinIO and then
+          # runs the shipped script against it.
           OUTLINE_MINIO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_USER_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_HOSTNAME=minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_HOSTNAME=console.minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_URL=https://console.minio.outline.heyvaldemar.net
+          OUTLINE_AWS_S3_UPLOAD_BUCKET_URL=https://minio.outline.heyvaldemar.net
           OUTLINE_OIDC_CLIENT_SECRET=ci-placeholder-secret
           OUTLINE_HOSTNAME=${APP_HOSTNAME}
           OUTLINE_URL=https://${APP_HOSTNAME}
