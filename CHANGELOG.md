@@ -83,6 +83,18 @@ _(no unreleased changes yet)_
 
 ### Fixed
 
+- **The migration step's health probe could never have answered.** It ran
+  `docker run … minio/minio sh -c "curl …"`, and that image has an entrypoint —
+  so it asked the minio binary to run a subcommand called `sh`. The probe
+  failed every time, and under `timeout` that reads as a slow start rather than
+  a check that cannot work. `--entrypoint sh` now, and the whole step was run
+  end to end locally rather than read.
+- **The workflow names its compose project literally.** Two new steps used
+  `$COMPOSE_PROJECT_NAME`, copied from a sibling template; this workflow only
+  defines that variable inside one step, so compose got an empty project name,
+  `ps -aq garage-init` returned nothing, and the assertion reported a bootstrap
+  that had in fact just printed "bootstrap complete". The second use would have
+  created a volume called `_minio-data`.
 - **The upgrade drill follows renames.** It reconstructs the previous release
   by asking git for each compose file at that tag — and this release renames
   one of them, so `git show v1.6.2:03-outline-garage-…` failed with "exists on
