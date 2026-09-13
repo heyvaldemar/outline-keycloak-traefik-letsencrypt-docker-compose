@@ -42,7 +42,11 @@ BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}"
 OLD_BUCKET="${OUTLINE_MINIO_BUCKET_NAME:-data}"
 MINIO_VOLUME="${OUTLINE_MINIO_VOLUME:-${PROJECT}_minio-data}"
 RCLONE_IMAGE="${RCLONE_IMAGE:-rclone/rclone:1.71}"
-MINIO_IMAGE="${OUTLINE_MINIO_IMAGE_TAG:-minio/minio:RELEASE.2025-09-07T16-13-09Z}"
+# QUAY, NOT DOCKER HUB. MinIO removed minio/minio from Docker Hub, so the
+# image this migration needs to read your old bucket cannot be pulled from
+# there any more. The same release is still published on quay.io, and that
+# is the only reason this path still works at all.
+MINIO_IMAGE="${OUTLINE_MINIO_IMAGE_TAG:-quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z}"
 
 for v in OUTLINE_MINIO_ADMIN_PASSWORD OUTLINE_S3_ACCESS_KEY OUTLINE_S3_SECRET_KEY; do
   [ -n "${!v:-}" ] || { echo "$v is not set in .env — it is needed to read the old bucket" >&2; exit 1; }

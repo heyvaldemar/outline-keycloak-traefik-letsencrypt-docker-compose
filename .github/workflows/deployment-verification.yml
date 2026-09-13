@@ -416,7 +416,7 @@ jobs:
           docker run -d --name ci-old-minio --network outline-network \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" \
-            -v "$vol:/data" minio/minio:RELEASE.2025-09-07T16-13-09Z server /data > /dev/null
+            -v "$vol:/data" quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e server /data > /dev/null
           # --entrypoint sh, and it is not optional: the MinIO image has an
           # entrypoint, so `docker run … minio/minio sh -c …` asks the minio
           # binary to run a subcommand called "sh". It fails every time, the
@@ -425,10 +425,10 @@ jobs:
           # this step rather than by reading it.
           # shellcheck disable=SC2016
           timeout 3m bash -c 'until docker run --rm --network outline-network --entrypoint sh \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e \
             -c "curl -fsS http://ci-old-minio:9000/minio/health/live" >/dev/null 2>&1; do sleep 3; done'
           docker run --rm --network outline-network --entrypoint sh \
-            -e P="$OUTLINE_MINIO_ADMIN_PASSWORD" minio/minio:RELEASE.2025-09-07T16-13-09Z -c '
+            -e P="$OUTLINE_MINIO_ADMIN_PASSWORD" quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e -c '
               mc alias set old http://ci-old-minio:9000 minioadmin "$P" > /dev/null
               mc mb old/data > /dev/null 2>&1 || true
               echo "written under MinIO before the upgrade" | mc pipe old/data/uploads/legacy.txt

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [2.0.1] - 2026-09-13
+
+### Fixed
+
+- **The MinIO to Garage migration could no longer pull MinIO.** MinIO removed
+  `minio/minio` from Docker Hub, so `outline-minio-to-garage.sh` and the CI step
+  that proves it both died on `pull access denied for minio/minio, repository
+  does not exist`. The migration is the whole upgrade path off the 1.x releases,
+  and it had stopped being runnable by anybody.
+
+  The same release is still published on quay.io. Every reference points there
+  now, pinned by the digest quay serves, and the migration was run end to end
+  against it before this went out: the server starts, the health endpoint
+  answers, and `mc` writes into the old bucket exactly as the test drives it.
+
+  This is not a MinIO version change. It is the same release from a registry
+  that still has it.
+
 ## [2.0.0] - 2026-09-11
 
 ### Changed
@@ -280,7 +298,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/releases/tag/v2.0.1
 [1.6.2]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.1...v1.6.2
 [1.6.1]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.6.0...v1.6.1
 [1.6.0]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v1.5.0...v1.6.0
