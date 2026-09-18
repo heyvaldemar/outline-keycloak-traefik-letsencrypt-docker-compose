@@ -10,7 +10,7 @@ x-images:
   outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:${OUTLINE_IMAGE_VERSION:-1.10.1@sha256:832051f039b446c87aa23929cf92c00980c66aaa2d744d118c48c016ec816ad8}}
   redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7}}
   garage: &garage-image ${OUTLINE_GARAGE_IMAGE_TAG:-dxflrs/garage:${OUTLINE_GARAGE_IMAGE_VERSION:-v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020}}
-  backups: &backups-image ${OUTLINE_BACKUPS_IMAGE_TAG:-alpine:${OUTLINE_BACKUPS_IMAGE_VERSION:-3.22@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce}}
+  backups: &backups-image ${OUTLINE_BACKUPS_IMAGE_TAG:-alpine:${OUTLINE_BACKUPS_IMAGE_VERSION:-3.22@sha256:365499d9dccb7c8cfaffef995a6c382e71174585e0556f6476ead1c5971c39fb}}
 
 networks:
   outline-network:
