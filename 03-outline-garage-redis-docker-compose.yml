@@ -6,11 +6,11 @@
 # CI (Trivy scans, check-pin-freshness, the ephemeral test .env) reads
 # the pins from these lines — this block is the single source of truth.
 x-images:
-  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94}}
+  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:a3b7f434b2dc57ce85a67e171163eb8ab1a1ebcb39d27484661f26b1dfbe30d6}}
   outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:${OUTLINE_IMAGE_VERSION:-1.10.1@sha256:832051f039b446c87aa23929cf92c00980c66aaa2d744d118c48c016ec816ad8}}
-  redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7}}
+  redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:c6eabf748fc7a61dbb5a705c78bcf3d6377b1127a97d0ce965c11c44ba46896f}}
   garage: &garage-image ${OUTLINE_GARAGE_IMAGE_TAG:-dxflrs/garage:${OUTLINE_GARAGE_IMAGE_VERSION:-v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020}}
-  backups: &backups-image ${OUTLINE_BACKUPS_IMAGE_TAG:-alpine:${OUTLINE_BACKUPS_IMAGE_VERSION:-3.22@sha256:365499d9dccb7c8cfaffef995a6c382e71174585e0556f6476ead1c5971c39fb}}
+  backups: &backups-image ${OUTLINE_BACKUPS_IMAGE_TAG:-alpine:${OUTLINE_BACKUPS_IMAGE_VERSION:-3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8}}
 
 networks:
   outline-network:
