@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _(no unreleased changes yet)_
 
+## [2.0.7] - 2026-09-22
+
+### Fixed
+
+- **`FILE_STORAGE_UPLOAD_MAX_SIZE` was empty on every deployment made from
+  `.env.example`.** `OUTLINE_AWS_S3_UPLOAD_MAX_SIZE` was referenced by the
+  compose file, had no default, and was not in `.env.example`; `docker compose
+  config` renders it as `""` after warning that the variable is not set. It now
+  carries upstream's own default, 262144000 bytes, in both places — so the
+  value is there whether or not the file is edited, and the file says what it
+  is.
+
 ## [2.0.6] - 2026-09-21
 
 ### Security

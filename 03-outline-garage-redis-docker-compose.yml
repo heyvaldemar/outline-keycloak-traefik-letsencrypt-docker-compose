@@ -272,7 +272,7 @@ services:
       # Renamed upstream. AWS_S3_UPLOAD_MAX_SIZE still works and logs a
       # deprecation on every start; the .env key is unchanged so nobody has to
       # edit a file to stop seeing it.
-      FILE_STORAGE_UPLOAD_MAX_SIZE: ${OUTLINE_AWS_S3_UPLOAD_MAX_SIZE}
+      FILE_STORAGE_UPLOAD_MAX_SIZE: ${OUTLINE_AWS_S3_UPLOAD_MAX_SIZE:-262144000}
       # PATH STYLE, and this changed with the storage. Virtual-hosted style
       # puts the bucket in a subdomain - data.s3.example.com - which behind one
       # Traefik hostname needs a wildcard certificate and a wildcard DNS
