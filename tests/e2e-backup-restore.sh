@@ -6,10 +6,13 @@
 #
 #   COMPOSE_PROJECT_NAME=outline ./tests/e2e-backup-restore.sh
 #
-# The stack carries two independent PostgreSQL databases and one application
-# data volume, each with its own backup loop, so every scenario runs twice:
+# The stack carries two independent PostgreSQL databases and Garage's
+# attachment store, each with its own backup loop, so every scenario runs twice:
 # once for Keycloak, once for Outline.
 set -uo pipefail
+
+# shellcheck disable=SC1091
+if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 KEYCLOAK_FILE="${KEYCLOAK_COMPOSE_FILE:-02-keycloak-outline-docker-compose.yml}"
 OUTLINE_FILE="${OUTLINE_COMPOSE_FILE:-03-outline-garage-redis-docker-compose.yml}"
@@ -25,6 +28,9 @@ OUTLINE_DB_USER="${OUTLINE_DB_USER:-outlinedbuser}"
 OUTLINE_BACKUPS_PATH="${OUTLINE_POSTGRES_BACKUPS_PATH:-/srv/outline-postgres/backups}"
 OUTLINE_PREFIX="${OUTLINE_POSTGRES_BACKUP_NAME:-outline-postgres-backup}"
 OUTLINE_DATA_BACKUPS_PATH="${OUTLINE_DATA_BACKUPS_PATH:-/srv/outline-application-data/backups}"
+OUTLINE_DATA_PREFIX="${OUTLINE_DATA_BACKUP_NAME:-outline-garage-data-backup}"
+# The S3 check needs the keys and hostname the stack was started with.
+S3_HOST="${S3_HOST:-${OUTLINE_S3_HOSTNAME:-}}"
 
 INTERVAL="${KEYCLOAK_BACKUP_INTERVAL:-60s}"
 case "$INTERVAL" in
@@ -48,10 +54,9 @@ resolve() {
 }
 
 KC_DB=$(resolve "$KEYCLOAK_FILE" postgres-keycloak)
-KC_APP=$(resolve "$KEYCLOAK_FILE" keycloak)
 KC_BK=$(resolve "$KEYCLOAK_FILE" backups-keycloak)
-OL_APP=$(resolve "$OUTLINE_FILE" outline)
 OL_BK=$(resolve "$OUTLINE_FILE" backups-outline)
+OL_GARAGE=$(resolve "$OUTLINE_FILE" garage)
 
 echo "=== Outline and Keycloak: backup and restore end-to-end"
 note "project=$PROJECT cycle wait=${CYCLE_WAIT}s"
@@ -170,11 +175,12 @@ if [ -z "$baseline" ]; then
 else
   note "baseline: $(basename "$baseline")"
   kc_sql "CREATE TABLE IF NOT EXISTS restore_probe (id int); INSERT INTO restore_probe VALUES (1);" > /dev/null
-  docker stop "$KC_APP" > /dev/null
-  kc_sh "dropdb -h postgres-keycloak -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
-    && createdb -h postgres-keycloak -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME \
-    && gunzip -c $baseline | psql -h postgres-keycloak -U $KEYCLOAK_DB_USER $KEYCLOAK_DB_NAME" > /dev/null 2>&1
-  docker start "$KC_APP" > /dev/null
+  # The shipped script, which stops and starts the application itself. This
+  # used to run its own drop/create/load, so the script a person runs was never
+  # the one that passed here.
+  if ! COMPOSE_PROJECT_NAME="$PROJECT" ./keycloak-restore-database.sh "$(basename "$baseline")" > /dev/null; then
+    bad "./keycloak-restore-database.sh failed"
+  fi
   left=$(kc_sql "SELECT count(*) FROM information_schema.tables WHERE table_name = 'restore_probe';" | tr -d '[:space:]')
   if [ "$left" = "0" ]; then
     ok "the row added after the backup is gone, so the restore replaced state"
@@ -193,16 +199,57 @@ if [ -z "$baseline" ]; then
 else
   note "baseline: $(basename "$baseline")"
   ol_sql "CREATE TABLE IF NOT EXISTS restore_probe (id int); INSERT INTO restore_probe VALUES (1);" > /dev/null
-  docker stop "$OL_APP" > /dev/null
-  ol_sh "dropdb -h postgres-outline -U $OUTLINE_DB_USER $OUTLINE_DB_NAME \
-    && createdb -h postgres-outline -U $OUTLINE_DB_USER $OUTLINE_DB_NAME \
-    && gunzip -c $baseline | psql -h postgres-outline -U $OUTLINE_DB_USER $OUTLINE_DB_NAME" > /dev/null 2>&1
-  docker start "$OL_APP" > /dev/null
+  # The shipped script, which stops and starts the application itself. This
+  # used to run its own drop/create/load, so the script a person runs was never
+  # the one that passed here.
+  if ! COMPOSE_PROJECT_NAME="$PROJECT" ./outline-restore-database.sh "$(basename "$baseline")" > /dev/null; then
+    bad "./outline-restore-database.sh failed"
+  fi
   left=$(ol_sql "SELECT count(*) FROM information_schema.tables WHERE table_name = 'restore_probe';" | tr -d '[:space:]')
   if [ "$left" = "0" ]; then
     ok "the row added after the backup is gone, so the restore replaced state"
   else
     bad "restore_probe still present after restore, the restore was a no-op"
+  fi
+fi
+
+echo
+echo "=== restoring Outline's attachments brings back what the backup held, and only that"
+# Through S3, as Outline stores and reads attachments: an object stored before
+# the backup must come back, and one stored after it must not. Until 2.1.0 the
+# backup loop archived the MinIO volume this stack stopped using in 2.0.0, and
+# a check that only listed the archive stayed green over it.
+s3obj() { S3_HOST="$S3_HOST" AK="$OUTLINE_S3_ACCESS_KEY" SK="$OUTLINE_S3_SECRET_KEY" \
+  BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}" python3 tests/s3-object.py "$@"; }
+tag="e2e-$(date +%s)"
+if ! s3obj put "$tag/before.txt" "stored before the backup"; then
+  bad "could not store an object through S3"
+else
+  # Garage writes its metadata snapshot hourly; CI asks for one rather than wait.
+  docker exec "$OL_GARAGE" /garage meta snapshot > /dev/null 2>&1 || note "garage meta snapshot failed"
+  ol_sh "touch $OUTLINE_DATA_BACKUPS_PATH/.e2e-stamp"
+  archive=$(newest_after_marker "$OL_BK" "$OUTLINE_DATA_BACKUPS_PATH" "$OUTLINE_DATA_PREFIX" ".tar.gz")
+  if [ -z "$archive" ]; then
+    bad "no attachment archive taken after the object within ${CYCLE_WAIT}s"
+  else
+    note "archive: $(basename "$archive")"
+    s3obj put "$tag/after.txt" "stored after the backup" || note "could not store the second object"
+    if ! COMPOSE_PROJECT_NAME="$PROJECT" ./outline-restore-application-data.sh "$(basename "$archive")"; then
+      bad "./outline-restore-application-data.sh failed"
+    else
+      waited=0
+      until got=$(s3obj get "$tag/before.txt" 2>/dev/null) || [ "$waited" -ge 120 ]; do sleep 3; waited=$((waited + 3)); done
+      if [ "$got" = "stored before the backup" ]; then
+        ok "the object stored before the backup reads back through S3 after the restore"
+      else
+        bad "the object stored before the backup is missing after the restore (got '$got')"
+      fi
+      if s3obj absent "$tag/after.txt"; then
+        ok "the object stored after the backup is gone, so the restore replaced the store"
+      else
+        bad "the object stored after the backup survived the restore"
+      fi
+    fi
   fi
 fi
 

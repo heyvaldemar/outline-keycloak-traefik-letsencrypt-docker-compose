@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Outline's attachments were in no backup.** Since 2.0.0 replaced MinIO with
+  Garage, the backup loop kept archiving the `minio-data` volume, which nothing
+  writes to any more, and logged `Data backup OK` every cycle. The check in CI
+  listed the archive and stayed green over it. It now archives Garage's
+  metadata and data directories, reads the archive back before naming it a
+  backup, and writes it as `outline-garage-data-backup-*`, so the old MinIO
+  archives are never offered for a restore.
+- **The attachment restore could not run.** It looked for a `minio` service,
+  which this stack has not had since 2.0.0. It now stops Outline and Garage,
+  replaces both directories, and puts back the newest Garage metadata snapshot
+  in the archive: the archive is taken while Garage runs, and the snapshot is
+  the consistent copy. Garage now writes one every hour.
+- **The database restores carried their names and paths as literals** and
+  loaded the dump with psql carrying on past a failed statement. Both now read
+  every path, name and credential from the running backups container, accept
+  the backup file name as an argument, and stop at the first error.
+- **CI never ran any of the three restore scripts.** The end-to-end test used
+  its own copies of the commands. It now runs the shipped scripts, and for the
+  attachments it stores an object through S3, takes a backup, stores a second
+  one, restores, and requires the first to read back and the second to be gone.
+
+**Upgrading:** take a backup after the upgrade. Until the first 2.1.0 cycle
+runs, your attachments are in no backup.
+
 ### Changed
 
 - **The freshness check has its own workflow, Pin Freshness.** It ran inside Deployment Verification, whose badge is the one at the top of this README. Across the fleet, nine red runs in ten were a pin one version behind - which the fleet's triage moves within the day - and a reader cannot tell that from a stack that does not boot. The badge now says whether the stack boots. The job itself is unchanged.

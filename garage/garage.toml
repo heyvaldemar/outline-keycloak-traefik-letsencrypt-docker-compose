@@ -24,6 +24,16 @@ data_dir = "/var/lib/garage/data"
 # that the backup sidecar can archive and the restore script can put back.
 db_engine = "sqlite"
 
+# A consistent copy of that file, taken by Garage itself, in meta/snapshots/.
+# The backup sidecar archives the metadata directory while Garage is running,
+# so the live db.sqlite in the archive can be caught mid-write; a snapshot
+# cannot. outline-restore-application-data.sh puts the newest snapshot in the
+# archive back as db.sqlite, which is Garage's own documented recovery. Garage
+# keeps the two newest and deletes older ones. The cost of the interval is the
+# window: an attachment uploaded after the last snapshot and before the backup
+# is in the data directory but not in the restored metadata.
+metadata_auto_snapshot_interval = "1h"
+
 # One node means one copy. Redundancy for this data comes from the backup that
 # runs beside it, not from Garage replicating to itself.
 replication_factor = 1

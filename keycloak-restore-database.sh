@@ -1,66 +1,60 @@
-#!/bin/bash
-set -euo pipefail
+#!/usr/bin/env bash
+# keycloak-restore-database.sh [backup-file-name]
+#
+# Replaces the Keycloak database with one of the dumps the backups service wrote.
+#
+#   ./keycloak-restore-database.sh               list and ask
+#   ./keycloak-restore-database.sh <file-name>   restore that one
+#
+# EVERY PATH, NAME AND CREDENTIAL COMES FROM THE RUNNING BACKUPS CONTAINER.
+# The previous version carried keycloakdb, keycloakdbuser and the backup
+# directory as literals, wrong for any .env that sets them differently, and
+# loaded the dump with psql's default of carrying on past a failed statement.
+# The backup loop reads its own environment, so this reads the same one, and
+# the two cannot disagree.
+#
+# CI runs this exact file against a marker written after the backup it
+# restores, and requires the marker to be gone.
+#
+# Set COMPOSE_PROJECT_NAME if the stack was started with a -p other than outline.
+set -Eeuo pipefail
 
-# # keycloak-restore-database.sh Description
-# This script facilitates the restoration of a database backup.
-# 1. **Identify Containers**: It first identifies the service and backups containers by name, finding the appropriate container IDs.
-# 2. **List Backups**: Displays all available database backups located at the specified backup path.
-# 3. **Select Backup**: Prompts the user to copy and paste the desired backup name from the list to restore the database.
-# 4. **Stop Service**: Temporarily stops the service to ensure data consistency during restoration.
-# 5. **Restore Database**: Executes a sequence of commands to drop the current database, create a new one, and restore it from the selected compressed backup file.
-# 6. **Start Service**: Restarts the service after the restoration is completed.
-# To make the `keycloak-restore-database.shh` script executable, run the following command:
-# `chmod +x keycloak-restore-database.sh`
-# Usage of this script ensures a controlled and guided process to restore the database from an existing backup.
-
-# Containers are resolved through Compose, not through a name filter. Every
-# service in this stack deploys under one project ("outline" in the README), so
-# a filter like "name=keycloak-keycloak" matches nothing and the script then
-# runs docker stop and docker exec against an empty id.
-COMPOSE_FILE="02-keycloak-outline-docker-compose.yml"
 PROJECT="${COMPOSE_PROJECT_NAME:-outline}"
+APP_SERVICE="keycloak"
 
-resolve_container() {
-  local service="$1" id
-  id="$(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" ps -q "$service" 2>/dev/null | head -n 1)"
-  if [ -z "$id" ]; then
-    echo "error: no container for service '$service' in project '$PROJECT'." >&2
-    echo "       Run this script from the directory holding $COMPOSE_FILE, and set" >&2
-    echo "       COMPOSE_PROJECT_NAME if you deployed under a different project name." >&2
-    exit 1
-  fi
-  printf '%s' "$id"
+cid() {  # the container of one compose service in this project
+  docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" \
+    --filter "label=com.docker.compose.service=$1" | head -n 1
 }
+APP="$(cid "$APP_SERVICE")"; BKP="$(cid backups-keycloak)"
+[ -n "$BKP" ] || { echo "error: no backups container in compose project '$PROJECT' (set COMPOSE_PROJECT_NAME)" >&2; exit 1; }
+[ -n "$APP" ] || { echo "error: no $APP_SERVICE container in compose project '$PROJECT'" >&2; exit 1; }
+[ "$(docker inspect -f '{{.State.Running}}' "$BKP")" = true ] || { echo "error: the backups container is not running" >&2; exit 1; }
 
-KEYCLOAK_CONTAINER="$(resolve_container keycloak)"
-KEYCLOAK_BACKUPS_CONTAINER="$(resolve_container backups-keycloak)"
-KEYCLOAK_DB_NAME="keycloakdb"
-KEYCLOAK_DB_USER="keycloakdbuser"
-BACKUP_PATH="/srv/keycloak-postgres/backups/"
+env_of() { docker exec "$BKP" printenv "$1"; }
+DIR="$(env_of KEYCLOAK_POSTGRES_BACKUPS_PATH)"; NAME="$(env_of KEYCLOAK_POSTGRES_BACKUP_NAME)"
+DB_NAME="$(env_of KEYCLOAK_DB_NAME)"; DB_USER="$(env_of KEYCLOAK_DB_USER)"
 
-echo "--> All available database backups:"
+SELECTED="${1:-}"
+if [ -z "$SELECTED" ]; then
+  echo "Database backups in $DIR:"
+  docker exec "$BKP" sh -c "ls -1 '$DIR' | grep -E '^$NAME-.*\\.gz\$'" || { echo "  none found" >&2; exit 1; }
+  read -r -p "File name to restore: " SELECTED
+fi
+case "$SELECTED" in ""|*/*) echo "error: give a file name from the list, not a path" >&2; exit 1 ;; esac
+docker exec "$BKP" gunzip -t "$DIR/$SELECTED" >/dev/null \
+  || { echo "error: $DIR/$SELECTED is missing or does not open; nothing was changed" >&2; exit 1; }
 
-for entry in $(docker container exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c "ls $BACKUP_PATH")
-do
-  echo "$entry"
-done
-
-echo "--> Copy and paste the backup name from the list above to restore database and press [ENTER]
---> Example: keycloak-postgres-backup-YYYY-MM-DD_hh-mm.gz"
-echo -n "--> "
-
-read -r SELECTED_DATABASE_BACKUP
-
-echo "--> $SELECTED_DATABASE_BACKUP was selected"
-
-echo "--> Stopping service..."
-docker stop "$KEYCLOAK_CONTAINER"
-
-echo "--> Restoring database..."
-docker exec "$KEYCLOAK_BACKUPS_CONTAINER" sh -c "dropdb -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
-&& createdb -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER \
-&& gunzip -c ${BACKUP_PATH}${SELECTED_DATABASE_BACKUP} | psql -h postgres-keycloak -p 5432 $KEYCLOAK_DB_NAME -U $KEYCLOAK_DB_USER"
-echo "--> Database recovery completed..."
-
-echo "--> Starting service..."
-docker start "$KEYCLOAK_CONTAINER"
+echo "Stopping $APP_SERVICE so nothing writes while the database is replaced"
+docker stop "$APP" >/dev/null
+restart() { docker start "$APP" >/dev/null && echo "Started $APP_SERVICE"; }
+trap 'restart' EXIT
+echo "Restoring $SELECTED"
+if ! docker exec "$BKP" sh -c "(set -o pipefail) 2>/dev/null && set -o pipefail; set -eu
+    dropdb --force -h postgres-keycloak -U '$DB_USER' --if-exists '$DB_NAME'
+    createdb -h postgres-keycloak -U '$DB_USER' '$DB_NAME'
+    gunzip -c '$DIR/$SELECTED' | psql -q -v ON_ERROR_STOP=1 -h postgres-keycloak -U '$DB_USER' -d '$DB_NAME' >/dev/null"; then
+  echo "error: the restore failed part-way. The database may now be empty: restore another backup before using Keycloak." >&2
+  exit 1
+fi
+echo "Restored $SELECTED into $DB_NAME"

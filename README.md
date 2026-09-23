@@ -110,7 +110,7 @@ curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
 - **Garage** S3-compatible storage for uploads. No console: `mc` or any S3 client is how you look inside the bucket.
 - **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and Redis 7.4.
 - **Traefik v3** with automatic HTTPS for all five hostnames.
-- **Scheduled backups**: both databases (`pg_dump | gzip`) and Outline's attachments (`tar.gz`), with retention pruning and three restore scripts.
+- **Scheduled backups**: both databases (`pg_dump | gzip`) and Outline's attachments (Garage's data and metadata directories, `tar.gz`), with retention pruning and three restore scripts that CI runs.
 - **Credentials required at deploy time**: compose fails fast if `.env` is incomplete.
 
 ## Supply chain trust
@@ -167,7 +167,11 @@ Two backup sidecars run dump → prune → sleep loops: one for the Keycloak dat
 
 Each cycle logs `Database backup OK: <file> (<bytes> bytes)` or `Database backup FAILED` (the same for the data archive where there is one). A failed dump is kept as `<file>.failed` for diagnosis and never overwrites a good backup. Grep the log for `FAILED` from your monitoring.
 
-**Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`.
+**Restore** with the interactive scripts (`chmod +x *.sh` once): `./keycloak-restore-database.sh`, `./outline-restore-database.sh`, `./outline-restore-application-data.sh`. Each lists the backups and asks, or takes a file name as its argument, and reads every path and credential from the running backups container.
+
+**Attachments are restored from Garage's own snapshot.** The archive is taken while Garage runs, so the live `db.sqlite` in it can be caught mid-write. Garage writes a consistent copy of it every hour (`metadata_auto_snapshot_interval` in `garage/garage.toml`), and the restore script puts the newest one in the archive back, which is Garage's documented recovery. The price is the window: an attachment uploaded in the hour between the last snapshot and the backup comes back without its metadata. Shorten the interval if that hour matters to you.
+
+**Archives from before 2.1.0 do not hold your attachments.** Until 2.1.0 the backup loop archived the `minio-data` volume, which nothing has written to since Garage replaced MinIO in 2.0.0. Those archives are named `outline-minio-application-data-backup-*`, the restore script does not offer them, and once your migration is verified they can be deleted. Take a fresh backup after upgrading: until the first 2.1.0 cycle runs, the attachments are in no backup.
 
 ## Unattended updates
 
@@ -206,7 +210,7 @@ The [Deployment Verification](https://github.com/heyvaldemar/outline-keycloak-tr
 3. **Pin freshness** (daily/manual): digest drift across all seven pins plus release-lag checks for Keycloak, Outline, and Traefik.
 4. **Deploy-and-test**: boots all three stacks in order with ephemeral credentials and requires: Keycloak healthy, the S3 contract Outline depends on proven through Traefik, the MinIO migration proven on real objects, Outline liveness through Traefik, and the Outline login page through Traefik.
 
-A green run is the authoritative proof that the template deploys end-to-end.
+A green run is the authoritative proof that the template deploys end-to-end and that its backups restore: `tests/e2e-backup-restore.sh` runs all three shipped restore scripts. For attachments it stores an object through S3, takes a backup, stores a second object, restores, and requires the first to read back and the second to be gone.
 
 ## Security notes
 
