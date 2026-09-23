@@ -11,8 +11,10 @@
 # once for Keycloak, once for Outline.
 set -uo pipefail
 
+# Read, not exported: a later check renders compose with no .env and must see
+# it refuse, which it cannot if every variable is already in the environment.
 # shellcheck disable=SC1091
-if [ -f .env ]; then set -a; . ./.env; set +a; fi
+if [ -f .env ]; then . ./.env; fi
 
 KEYCLOAK_FILE="${KEYCLOAK_COMPOSE_FILE:-02-keycloak-outline-docker-compose.yml}"
 OUTLINE_FILE="${OUTLINE_COMPOSE_FILE:-03-outline-garage-redis-docker-compose.yml}"
