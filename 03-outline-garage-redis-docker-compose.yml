@@ -371,7 +371,7 @@ services:
         fi;
         DATA_FILE="$$OUTLINE_DATA_BACKUPS_PATH/$$OUTLINE_DATA_BACKUP_NAME-$$STAMP.tar.gz";
         echo "[$$(date -Iseconds)] Starting data backup to $$DATA_FILE";
-        # Garage's metadata and data directories, relative to / so a restore
+        # The Garage metadata and data directories, relative to / so a restore
         # extracts them where they came from. GNU tar exits 1 when a file
         # changed while it was read, so the exit code alone cannot say whether
         # the archive is whole: it is read back before it is named a backup,
