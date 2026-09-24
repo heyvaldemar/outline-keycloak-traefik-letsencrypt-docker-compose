@@ -39,6 +39,9 @@
 #   DATA_DIR_ENV     the same for the data archives (optional)
 #   DATA_FILE_MATCH  (default: \.tar\.gz$)
 #   DATA_PATH_ENV    the variable naming the live data directory, or "=/path"
+#   DATA_MARK_SUBDIR where under it the marker file goes (default: the
+#                    directory itself; Outline's Garage tree is two mounts
+#                    under a path that is not one, so its marker goes in /data)
 #   DB_RESTORE       the shipped command, with "$F" for the dump's file name
 #                    and "$S" for the cycle stamp in it
 #   DATA_RESTORE     the same for the data archive (optional)
@@ -108,8 +111,8 @@ mark_read() {
   esac
 }
 
-mark_file_write() { [ -n "${DATA_PATH_ENV:-}" ] && bk "printf '%s' '$MARK' > '$(val "$DATA_PATH_ENV")/.dr-marker'" || true; }
-mark_file_read() { bk "cat '$(val "$DATA_PATH_ENV")/.dr-marker' 2>/dev/null" || true; }
+mark_file_write() { [ -n "${DATA_PATH_ENV:-}" ] && bk "printf '%s' '$MARK' > '$(val "$DATA_PATH_ENV")${DATA_MARK_SUBDIR:-}/.dr-marker'" || true; }
+mark_file_read() { bk "cat '$(val "$DATA_PATH_ENV")${DATA_MARK_SUBDIR:-}/.dr-marker' 2>/dev/null" || true; }
 
 wait_app() {
   local limit="$1" waited=0 code=""
