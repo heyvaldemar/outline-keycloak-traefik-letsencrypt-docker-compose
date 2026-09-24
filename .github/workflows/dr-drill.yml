@@ -1,0 +1,289 @@
+name: Clean-Machine Restore
+
+# THE HOST IS GONE. What an operator has left is what they kept off it: the
+# backup files and the .env. This drill takes those from one runner that ran
+# the PREVIOUS release, and brings the CURRENT release back from them on a
+# second runner that has never run this stack - then measures how long that
+# took, from the first command on the empty machine to the application
+# answering with the data it had. The ordinary deployment verification restores
+# on the same host and the same version; this is the case it cannot reach.
+on:
+  schedule:
+    - cron: "40 4 * * 0"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tests/dr-drill.sh"
+      - ".github/workflows/dr-drill.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dr-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  before:
+    name: The host that dies runs the previous release and is backed up
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_HOSTNAME: outline.heyvaldemar.net
+      KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
+      COMPOSE_PROJECT_NAME: outline
+      DOCKER_COMPOSE_FILE: "01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml"
+      APP_URL: "https://$APP_HOSTNAME/"
+      APP_OK: "200|302"
+      DB_ENGINE: "postgres"
+      DB_HOST: "postgres-outline"
+      DB_NAME_ENV: "OUTLINE_DB_NAME"
+      DB_USER_ENV: "OUTLINE_DB_USER"
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: "OUTLINE_POSTGRES_BACKUPS_PATH"
+      DATA_DIR_ENV: "OUTLINE_DATA_BACKUPS_PATH"
+      DATA_PATH_ENV: "OUTLINE_DATA_PATH"
+      DB_FILE_MATCH: ""
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "./outline-restore-database.sh \"$F\""
+      DATA_RESTORE: "./outline-restore-application-data.sh \"$F\""
+      DR_DIAG: ""
+      DR_IGNORE_SERVICES: ""
+      DR_KEEP: ""
+      DR_APP_WAIT: ""
+      BACKUPS_SVC: "backups-outline"
+      EXTRA_DB_SVC: "backups-keycloak"
+      EXTRA_DB_DIR_ENV: "KEYCLOAK_POSTGRES_BACKUPS_PATH"
+      EXTRA_DB_FILE_MATCH: ""
+      EXTRA_DB_RESTORE: "./keycloak-restore-database.sh \"$F\""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: The release this host was running
+        # The newest release whose stack differs from main's, so the restore
+        # below crosses a version: an old backup brought back into the release
+        # that replaced it. Picking by tag order alone chose main's own release
+        # whenever main carried a commit that did not touch the stack, and the
+        # first run "crossed" from v1.9.1 to v1.9.1. A template whose every
+        # release runs the same stack drills its newest one: the host is still
+        # gone, and the page says from and to plainly.
+        run: |
+          from=""
+          for t in $(git tag --sort=-v:refname --list 'v*'); do
+            if ! git diff --quiet "$t" HEAD -- $DOCKER_COMPOSE_FILE; then from="$t"; break; fi
+          done
+          [ -n "$from" ] || from="$(git tag --sort=-v:refname --list 'v*' | head -n 1)"
+          [ -n "$from" ] || { echo "::error::no release to take the backup on"; exit 1; }
+          echo "DR_FROM=$from" >> "$GITHUB_ENV"
+          echo "the backup is taken on $from"
+
+      - name: Create the Docker networks
+        run: |
+          docker network create traefik-network || true
+          docker network create keycloak-network || true
+          docker network create outline-network || true
+
+      - name: Generate test .env with ephemeral credentials
+        # No *_IMAGE_TAG values on purpose: the compose x-images defaults
+        # apply, so CI tests exactly the pins the template ships. The OIDC
+        # client secret is a placeholder — Outline boots and serves its
+        # login page without a live realm; a real deployment configures the
+        # realm per the README.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${KEYCLOAK_HOST}
+          OUTLINE_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_UTILS_SECRET=$(openssl rand -hex 32)
+          # The MinIO lines here are deliberate, and not dead weight.
+          #
+          # The upgrade drill starts the PREVIOUS release on this run's
+          # volumes with this run's .env, and the previous release is 1.x,
+          # which still wants these. That is also what an upgrading
+          # deployment actually looks like: nobody deletes variables from
+          # .env the moment a service goes away. Dropping them would make the
+          # drill fail on a contract change that is intentional and
+          # documented, which is the one way to make that check useless.
+          #
+          # The admin password has a second job after the drill: the
+          # migration step fills the old volume through a real MinIO and then
+          # runs the shipped script against it.
+          OUTLINE_MINIO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_USER_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_HOSTNAME=minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_HOSTNAME=console.minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_URL=https://console.minio.outline.heyvaldemar.net
+          OUTLINE_AWS_S3_UPLOAD_BUCKET_URL=https://minio.outline.heyvaldemar.net
+          OUTLINE_OIDC_CLIENT_SECRET=ci-placeholder-secret
+          OUTLINE_HOSTNAME=${APP_HOSTNAME}
+          OUTLINE_URL=https://${APP_HOSTNAME}
+          OUTLINE_S3_HOSTNAME=${S3_HOST}
+          OUTLINE_S3_ACCESS_KEY=GK$(openssl rand -hex 12)
+          OUTLINE_S3_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_RPC_SECRET=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)
+          OUTLINE_OIDC_AUTH_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/auth
+          OUTLINE_OIDC_TOKEN_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/token
+          OUTLINE_OIDC_USERINFO_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/userinfo
+          KEYCLOAK_BACKUP_INIT_SLEEP=15s
+          KEYCLOAK_BACKUP_INTERVAL=60s
+          OUTLINE_BACKUP_INIT_SLEEP=15s
+          OUTLINE_BACKUP_INTERVAL=60s
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          for h in "$APP_HOSTNAME" "$KEYCLOAK_HOST" "$S3_HOST" "$APP_TRAEFIK_HOSTNAME"; do
+            echo "127.0.0.1 $h" | sudo tee -a /etc/hosts
+          done
+      - name: Run the previous release, write the markers, take the backup
+        run: ./tests/dr-drill.sh before
+
+      - name: Keep only what an operator keeps off the host
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+          retention-days: 1
+          include-hidden-files: true
+          if-no-files-found: error
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose $(for f in .dr-from-*.yml; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200 || true
+
+  after:
+    name: A clean machine brings the current release back from those files
+    needs: before
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_HOSTNAME: outline.heyvaldemar.net
+      KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
+      COMPOSE_PROJECT_NAME: outline
+      DOCKER_COMPOSE_FILE: "01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml"
+      APP_URL: "https://$APP_HOSTNAME/"
+      APP_OK: "200|302"
+      DB_ENGINE: "postgres"
+      DB_HOST: "postgres-outline"
+      DB_NAME_ENV: "OUTLINE_DB_NAME"
+      DB_USER_ENV: "OUTLINE_DB_USER"
+      DB_PASS_ENV: ""
+      DB_DIR_ENV: "OUTLINE_POSTGRES_BACKUPS_PATH"
+      DATA_DIR_ENV: "OUTLINE_DATA_BACKUPS_PATH"
+      DATA_PATH_ENV: "OUTLINE_DATA_PATH"
+      DB_FILE_MATCH: ""
+      DATA_FILE_MATCH: ""
+      DB_RESTORE: "./outline-restore-database.sh \"$F\""
+      DATA_RESTORE: "./outline-restore-application-data.sh \"$F\""
+      DR_DIAG: ""
+      DR_IGNORE_SERVICES: ""
+      DR_KEEP: ""
+      DR_APP_WAIT: ""
+      BACKUPS_SVC: "backups-outline"
+      EXTRA_DB_SVC: "backups-keycloak"
+      EXTRA_DB_DIR_ENV: "KEYCLOAK_POSTGRES_BACKUPS_PATH"
+      EXTRA_DB_FILE_MATCH: ""
+      EXTRA_DB_RESTORE: "./keycloak-restore-database.sh \"$F\""
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Create the Docker networks
+        run: |
+          docker network create traefik-network || true
+          docker network create keycloak-network || true
+          docker network create outline-network || true
+
+      - name: Generate test .env with ephemeral credentials
+        # No *_IMAGE_TAG values on purpose: the compose x-images defaults
+        # apply, so CI tests exactly the pins the template ships. The OIDC
+        # client secret is a placeholder — Outline boots and serves its
+        # login page without a live realm; a real deployment configures the
+        # realm per the README.
+        run: |
+          cat > .env <<EOF
+          TRAEFIK_ACME_EMAIL=ci@example.com
+          TRAEFIK_HOSTNAME=${APP_TRAEFIK_HOSTNAME}
+          TRAEFIK_BASIC_AUTH=traefikadmin:\$\$2y\$\$10\$\$sMzJfirKC75x/hVpiINeZOiSm.Jkity9cn4KwNkRvO7hSQVFc5FLO
+          KEYCLOAK_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          KEYCLOAK_HOSTNAME=${KEYCLOAK_HOST}
+          OUTLINE_DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_UTILS_SECRET=$(openssl rand -hex 32)
+          # The MinIO lines here are deliberate, and not dead weight.
+          #
+          # The upgrade drill starts the PREVIOUS release on this run's
+          # volumes with this run's .env, and the previous release is 1.x,
+          # which still wants these. That is also what an upgrading
+          # deployment actually looks like: nobody deletes variables from
+          # .env the moment a service goes away. Dropping them would make the
+          # drill fail on a contract change that is intentional and
+          # documented, which is the one way to make that check useless.
+          #
+          # The admin password has a second job after the drill: the
+          # migration step fills the old volume through a real MinIO and then
+          # runs the shipped script against it.
+          OUTLINE_MINIO_ADMIN_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_USER_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)
+          OUTLINE_MINIO_HOSTNAME=minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_HOSTNAME=console.minio.outline.heyvaldemar.net
+          OUTLINE_MINIO_CONSOLE_URL=https://console.minio.outline.heyvaldemar.net
+          OUTLINE_AWS_S3_UPLOAD_BUCKET_URL=https://minio.outline.heyvaldemar.net
+          OUTLINE_OIDC_CLIENT_SECRET=ci-placeholder-secret
+          OUTLINE_HOSTNAME=${APP_HOSTNAME}
+          OUTLINE_URL=https://${APP_HOSTNAME}
+          OUTLINE_S3_HOSTNAME=${S3_HOST}
+          OUTLINE_S3_ACCESS_KEY=GK$(openssl rand -hex 12)
+          OUTLINE_S3_SECRET_KEY=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_RPC_SECRET=$(openssl rand -hex 32)
+          OUTLINE_GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)
+          OUTLINE_OIDC_AUTH_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/auth
+          OUTLINE_OIDC_TOKEN_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/token
+          OUTLINE_OIDC_USERINFO_URI=https://${KEYCLOAK_HOST}/realms/outline/protocol/openid-connect/userinfo
+          KEYCLOAK_BACKUP_INIT_SLEEP=15s
+          KEYCLOAK_BACKUP_INTERVAL=60s
+          OUTLINE_BACKUP_INIT_SLEEP=15s
+          OUTLINE_BACKUP_INTERVAL=60s
+          EOF
+          echo "Generated ephemeral .env for CI run"
+
+      - name: Modify /etc/hosts for internal routing
+        run: |
+          for h in "$APP_HOSTNAME" "$KEYCLOAK_HOST" "$S3_HOST" "$APP_TRAEFIK_HOSTNAME"; do
+            echo "127.0.0.1 $h" | sudo tee -a /etc/hosts
+          done
+      - name: The files kept off the dead host
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dr-offsite
+          path: dr-out
+
+      - name: Restore on the clean machine, and time it
+        run: ./tests/dr-drill.sh after
+
+      - name: Keep the measured result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dr-result
+          path: dr-result.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose $(for f in $DOCKER_COMPOSE_FILE; do printf ' -f %s' "$f"; done) -p "$COMPOSE_PROJECT_NAME" logs --tail 200
