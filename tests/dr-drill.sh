@@ -306,6 +306,7 @@ after() {
   if [ -z "$DB_ENGINE" ] && [ -z "${DATA_PATH_ENV:-}" ]; then
     echo "nothing to check: neither a database row nor a data directory is configured" >&2; ok=false
   fi
+  $ok || explain
 
   local from total restore
   from="$(cat "$OUT/from")"; total=$((t1 - t0)); restore=$((t1 - tr))
