@@ -111,8 +111,29 @@ mark_read() {
   esac
 }
 
-mark_file_write() { [ -n "${DATA_PATH_ENV:-}" ] && bk "printf '%s' '$MARK' > '$(val "$DATA_PATH_ENV")${DATA_MARK_SUBDIR:-}/.dr-marker'" || true; }
-mark_file_read() { bk "cat '$(val "$DATA_PATH_ENV")${DATA_MARK_SUBDIR:-}/.dr-marker' 2>/dev/null" || true; }
+mark_path() {  # where the marker file goes: under the data directory, in DATA_MARK_SUBDIR when that exists there
+  local p; p="$(val "$DATA_PATH_ENV")"
+  if [ -n "${DATA_MARK_SUBDIR:-}" ] && bk "[ -d '$p${DATA_MARK_SUBDIR}' ]"; then p="$p${DATA_MARK_SUBDIR}"; fi
+  printf '%s' "$p/.dr-marker"
+}
+mark_file_write() {
+  # THE PATH IS RECORDED, NOT RECOMPUTED. The previous release may keep its
+  # data under another directory than the current one (Outline moved from
+  # /data to /var/lib/garage between two releases), and a backup taken from /
+  # restores the file where it was. The clean machine reads the path the dead
+  # host wrote to, whatever the current release would have chosen. A write
+  # that fails is a failed drill, not a quiet one: the first attempt at
+  # Outline wrote into a directory that was not there and said nothing.
+  [ -n "${DATA_PATH_ENV:-}" ] || return 0
+  local p; p="$(mark_path)"
+  bk "printf '%s' '$MARK' > '$p'" || { echo "could not write the marker file $p in the backups container" >&2; return 1; }
+  printf '%s\n' "$p" > "$OUT/marker_path"
+  say "marker file written to $p"
+}
+mark_file_read() {
+  local p; p="$(cat "$OUT/marker_path" 2>/dev/null || mark_path)"
+  bk "cat '$p' 2>/dev/null" || true
+}
 
 wait_app() {
   local limit="$1" waited=0 code=""
@@ -201,6 +222,7 @@ before() {
   docker compose $(cf "$from_files") -p "$PROJECT" up -d
   wait_healthy "$from_files"
   wait_app "${DR_APP_WAIT:-600}"
+  mkdir -p "$OUT"
   say "writing the markers"
   [ -z "$DB_ENGINE" ] || mark_write
   mark_file_write
@@ -211,7 +233,6 @@ before() {
   [ -z "${EXTRA_DB_SVC:-}" ] || wait_backup_started_after "$EXTRA_DB_DIR_ENV" "${EXTRA_DB_FILE_MATCH:-[0-9]\\.gz\$}" "$marked" "second database" "$EXTRA_DB_SVC"
   [ -z "${DATA_DIR_ENV:-}" ] || wait_backup_started_after "$DATA_DIR_ENV" "$DATA_FILE_MATCH" "$marked" "data"
   say "exporting what an operator keeps off the host: the backup files and .env"
-  mkdir -p "$OUT"
   cp .env "$OUT/env"
   local v dir
   for v in $(dirs); do
