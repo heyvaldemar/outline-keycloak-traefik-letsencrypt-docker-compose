@@ -32,6 +32,8 @@ jobs:
     env:
       APP_HOSTNAME: outline.heyvaldemar.net
       KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
+      S3_HOST: s3.outline.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.outline.heyvaldemar.net
       COMPOSE_PROJECT_NAME: outline
       DOCKER_COMPOSE_FILE: "01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml"
       APP_URL: "https://$APP_HOSTNAME/"
@@ -170,6 +172,8 @@ jobs:
     env:
       APP_HOSTNAME: outline.heyvaldemar.net
       KEYCLOAK_HOST: keycloak.outline.heyvaldemar.net
+      S3_HOST: s3.outline.heyvaldemar.net
+      APP_TRAEFIK_HOSTNAME: traefik.outline.heyvaldemar.net
       COMPOSE_PROJECT_NAME: outline
       DOCKER_COMPOSE_FILE: "01-traefik-outline-letsencrypt-docker-compose.yml 02-keycloak-outline-docker-compose.yml 03-outline-garage-redis-docker-compose.yml"
       APP_URL: "https://$APP_HOSTNAME/"
