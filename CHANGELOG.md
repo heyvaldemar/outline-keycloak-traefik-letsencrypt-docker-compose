@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Changed
+
+- **The MinIO to Garage migration runs the last public MinIO build, from Bitnami's archive.** MinIO removed `minio/minio` from Docker Hub and, on 2026-09-25, `quay.io/minio/minio` stopped answering anonymous pulls, so the throwaway server that reads an old bucket had no image left to run and the CI step that proves the migration died on `unauthorized`. `outline-minio-to-garage.sh` and that step now use `docker.io/bitnamilegacy/minio`, pinned by digest, mounted at `/bitnami/minio/data`; `OUTLINE_MINIO_IMAGE_TAG` and the new `OUTLINE_MINIO_DATA_DIR` still point the script at an image you already have.
 
 ## [2.1.0] - 2026-09-23
 

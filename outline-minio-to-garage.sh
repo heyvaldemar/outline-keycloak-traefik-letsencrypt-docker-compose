@@ -42,11 +42,16 @@ BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}"
 OLD_BUCKET="${OUTLINE_MINIO_BUCKET_NAME:-data}"
 MINIO_VOLUME="${OUTLINE_MINIO_VOLUME:-${PROJECT}_minio-data}"
 RCLONE_IMAGE="${RCLONE_IMAGE:-rclone/rclone:1.71}"
-# QUAY, NOT DOCKER HUB. MinIO removed minio/minio from Docker Hub, so the
-# image this migration needs to read your old bucket cannot be pulled from
-# there any more. The same release is still published on quay.io, and that
-# is the only reason this path still works at all.
-MINIO_IMAGE="${OUTLINE_MINIO_IMAGE_TAG:-quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z}"
+# THE LAST PUBLIC MINIO. MinIO removed minio/minio from Docker Hub, then on
+# 2026-09-25 quay.io/minio/minio stopped answering anonymous pulls too, and
+# the throwaway server this migration needs to read your old bucket had no
+# image left to run. Bitnami's archive still carries the last public build,
+# frozen, pinned here by digest; it keeps its data under /bitnami/minio/data
+# rather than /data, which is why the mount below points there. If the image
+# your old MinIO ran is still on this machine, set OUTLINE_MINIO_IMAGE_TAG to
+# it and the mount to /data with OUTLINE_MINIO_DATA_DIR.
+MINIO_IMAGE="${OUTLINE_MINIO_IMAGE_TAG:-docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20}"
+MINIO_DATA_DIR="${OUTLINE_MINIO_DATA_DIR:-/bitnami/minio/data}"
 
 for v in OUTLINE_MINIO_ADMIN_PASSWORD OUTLINE_S3_ACCESS_KEY OUTLINE_S3_SECRET_KEY; do
   [ -n "${!v:-}" ] || { echo "$v is not set in .env — it is needed to read the old bucket" >&2; exit 1; }
@@ -69,12 +74,12 @@ trap cleanup EXIT
 docker run -d --name "$OLD" --network "$NET" \
   -e MINIO_ROOT_USER="${OUTLINE_MINIO_ADMIN:-minioadmin}" \
   -e MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" \
-  -v "$MINIO_VOLUME:/data" \
-  "$MINIO_IMAGE" server /data > /dev/null
+  -v "$MINIO_VOLUME:$MINIO_DATA_DIR" \
+  "$MINIO_IMAGE" > /dev/null
 
 for _ in $(seq 1 30); do
-  docker run --rm --network "$NET" "$MINIO_IMAGE" \
-    sh -c "curl -fsS http://$OLD:9000/minio/health/live" > /dev/null 2>&1 && break
+  docker run --rm --network "$NET" --entrypoint sh "$MINIO_IMAGE" \
+    -c "curl -fsS http://$OLD:9000/minio/health/live" > /dev/null 2>&1 && break
   sleep 2
 done
 
