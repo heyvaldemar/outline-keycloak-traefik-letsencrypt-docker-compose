@@ -318,7 +318,7 @@ jobs:
           set -a; . ./.env; set +a
           # Same reason as above: the project is named literally here.
           vol="outline_minio-data"
-          # THE LAST PUBLIC MINIO. Docker Hub lost minio/minio first, then on
+          # THE LAST MINIO STILL ON A PUBLIC REGISTRY. Docker Hub lost minio/minio first, then on
           # 2026-09-25 quay.io stopped answering anonymous pulls, and this
           # step died on "unauthorized". Bitnami's archive carries the last
           # public build, frozen and pinned by digest; it keeps its data under

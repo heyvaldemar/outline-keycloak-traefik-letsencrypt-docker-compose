@@ -42,10 +42,10 @@ BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}"
 OLD_BUCKET="${OUTLINE_MINIO_BUCKET_NAME:-data}"
 MINIO_VOLUME="${OUTLINE_MINIO_VOLUME:-${PROJECT}_minio-data}"
 RCLONE_IMAGE="${RCLONE_IMAGE:-rclone/rclone:1.71}"
-# THE LAST PUBLIC MINIO. MinIO removed minio/minio from Docker Hub, then on
+# THE LAST MINIO STILL ON A PUBLIC REGISTRY. MinIO removed minio/minio from Docker Hub, then on
 # 2026-09-25 quay.io/minio/minio stopped answering anonymous pulls too, and
 # the throwaway server this migration needs to read your old bucket had no
-# image left to run. Bitnami's archive still carries the last public build,
+# image left to run. Bitnami's archive still carries the last build it made, from July 2025,
 # frozen, pinned here by digest; it keeps its data under /bitnami/minio/data
 # rather than /data, which is why the mount below points there. If the image
 # your old MinIO ran is still on this machine, set OUTLINE_MINIO_IMAGE_TAG to
