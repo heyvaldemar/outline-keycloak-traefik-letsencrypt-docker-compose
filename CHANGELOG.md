@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`quay.io/keycloak/keycloak:26.7.4` moved to `quay.io/keycloak/keycloak:26.8.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
 - **The archived MinIO is described as what it is.** The 2.1.1 notes, the
   migration script and its CI step called Bitnami's build "the last public
   MinIO build". It is the last build still on a public registry: Bitnami's
