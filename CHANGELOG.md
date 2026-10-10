@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.2.6] - 2026-10-10
+
 ### Security
 
 - **`quay.io/keycloak/keycloak:26.8.0` was rebuilt upstream**; the pin moved from `sha256:b0f60d489d51…` to `sha256:27b3230fbabb…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
@@ -447,7 +451,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.5...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.6...HEAD
+[2.2.6]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.5...v2.2.6
 [2.2.5]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.4...v2.2.5
 [2.2.4]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.3...v2.2.4
 [2.2.3]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.2...v2.2.3
