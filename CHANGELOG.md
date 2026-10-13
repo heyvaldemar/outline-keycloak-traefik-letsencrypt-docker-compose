@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`outlinewiki/outline:1.10.1` moved to `outlinewiki/outline:1.11.0`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+- **`quay.io/keycloak/keycloak:26.8.0` moved to `quay.io/keycloak/keycloak:26.8.1`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
+
 ### Fixed
 
 - **`.env.example` names the versions the compose file pins**: `KEYCLOAK_IMAGE_VERSION` from 26.7.3 to 26.8.0; `OUTLINE_IMAGE_VERSION` from 1.9.2 to 1.10.1. The commented-out examples had fallen behind the pins, so uncommenting one would have downgraded the service. The fleet's conformance check reported it.
