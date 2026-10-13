@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **`.env.example` names the versions the compose file pins**: `KEYCLOAK_IMAGE_VERSION` from 26.7.3 to 26.8.0; `OUTLINE_IMAGE_VERSION` from 1.9.2 to 1.10.1. The commented-out examples had fallen behind the pins, so uncommenting one would have downgraded the service. The fleet's conformance check reported it.
 
 ## [2.2.6] - 2026-10-10
 
