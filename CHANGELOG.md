@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- The README named the Outline 1.10 line after the pin refresh of 2026-10-13 moved the compose file to 1.11.0; fleet conformance had flagged it.
 
 ## [2.2.7] - 2026-10-13
 

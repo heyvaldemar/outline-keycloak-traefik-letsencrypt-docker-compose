@@ -106,7 +106,7 @@ curl -fsSL "https://${OUTLINE_HOSTNAME}/" -o /dev/null -w "%{http_code}\n"
 
 ## Features
 
-- **Outline** latest stable (1.10 line): documents, collections, search, real-time collaboration.
+- **Outline** latest stable (1.11 line): documents, collections, search, real-time collaboration.
 - **Keycloak 26.7** as the OIDC provider: users, groups, MFA, federation if you need it.
 - **Garage** S3-compatible storage for uploads. No console: `mc` or any S3 client is how you look inside the bucket.
 - **Two PostgreSQL 16 instances** (Keycloak and Outline isolated) and Redis 7.4.
