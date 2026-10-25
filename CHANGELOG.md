@@ -7,7 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_(no unreleased changes yet)_
+### Fixed
+
+- **The README named Outline 1.11 and Keycloak 26.7** after pin refreshes had moved the compose file to 1.12.0 and 26.8.1, the second time for Outline (1.10 before). It now names no version a pin refresh can move, and points at the pin. Fleet conformance had flagged Outline since 2026-10-23.
 
 ## [2.2.13] - 2026-10-23
 
