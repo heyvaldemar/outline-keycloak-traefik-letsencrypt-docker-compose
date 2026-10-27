@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:c8a121e4bb13…` to `sha256:1336e85aaed2…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
+- **`redis:7.4` was rebuilt upstream**; the pin moved from `sha256:44960b3100c4…` to `sha256:bd28fff4b665…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
+
 ### Fixed
 
 - **The README named Outline 1.11 and Keycloak 26.7** after pin refreshes had moved the compose file to 1.12.0 and 26.8.1, the second time for Outline (1.10 before). It now names no version a pin refresh can move, and points at the pin. Fleet conformance had flagged Outline since 2026-10-23.
