@@ -6,7 +6,7 @@
 # CI (Trivy scans, check-pin-freshness, the ephemeral test .env) reads
 # the pins from these lines — this block is the single source of truth.
 x-images:
-  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:1beaa3084eee2676f20a9cd9928f0bf2c5bf674f8e49f81017912183d377c61c}}
+  outline-postgres: &outline-postgres-image ${OUTLINE_POSTGRES_IMAGE_TAG:-postgres:${OUTLINE_POSTGRES_IMAGE_VERSION:-16@sha256:5db6dac2ef5dcff512f4f00a009c3c332b9f2f28f24277175bf3e4a3d02ef83a}}
   outline: &outline-image ${OUTLINE_IMAGE_TAG:-outlinewiki/outline:${OUTLINE_IMAGE_VERSION:-1.12.0@sha256:25d6a2ced2f1f0cf03c09abd776d87ba31941ed96d3a99992aa84b3bd0afc074}}
   redis: &redis-image ${OUTLINE_REDIS_IMAGE_TAG:-redis:${OUTLINE_REDIS_IMAGE_VERSION:-7.4@sha256:b6b6e3dc0c0952737748e55d5d885272840c7e42ba41ab1d5489f693419882f5}}
   garage: &garage-image ${OUTLINE_GARAGE_IMAGE_TAG:-dxflrs/garage:${OUTLINE_GARAGE_IMAGE_VERSION:-v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020}}
