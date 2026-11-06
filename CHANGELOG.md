@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.2.20] - 2026-11-06
+
 ### Changed
 
 - **`quay.io/keycloak/keycloak:26.8.1` moved to `quay.io/keycloak/keycloak:26.8.2`.** The freshness check reported the lag; the deploy job booted the stack on the new image before this landed.
@@ -567,7 +571,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.19...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.20...HEAD
+[2.2.20]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.19...v2.2.20
 [2.2.19]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.18...v2.2.19
 [2.2.18]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.17...v2.2.18
 [2.2.17]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.16...v2.2.17
