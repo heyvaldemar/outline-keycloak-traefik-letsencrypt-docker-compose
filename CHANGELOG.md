@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_(no unreleased changes yet)_
+
+## [2.2.23] - 2026-11-08
+
 ### Security
 
 - **No Garage or MinIO credential is on a command line any more.** `garage/garage-init.sh`, which runs on every `up -d`, called the admin API with BusyBox `wget`: the admin token in `--header` and, on the first run, the S3 secret key in `--post-data`, both in `wget`'s arguments. `outline-minio-to-garage.sh` started MinIO and rclone with `-e NAME=<secret>`, in `docker`'s arguments for as long as the copy ran. A process's arguments are readable by every user on the host with `ps`. BusyBox `wget` takes headers from nowhere else, so `garage-init.sh` now writes each request with the shell's own `printf` into `nc` through a FIFO, keeps it open until the reply's `Content-Length` is in, and judges the status line the way `wget`'s exit status was judged; the migration script exports its credentials and hands them to `docker` by name. Measured against the pinned Garage v2.4.1 with a sampler reading every process's arguments on the Docker host: the old script showed the token or secret in all 4 samples that caught `wget` running, the new one in none of 21 that caught `nc`; a second run changes nothing and a wrong token is refused. CI reads every command line on the runner while the migration runs and fails on any credential.
@@ -586,7 +590,8 @@ v1.2.0.
 
 - Shellcheck findings in all three restore scripts.
 
-[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.22...HEAD
+[Unreleased]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.23...HEAD
+[2.2.23]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.22...v2.2.23
 [2.2.22]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.21...v2.2.22
 [2.2.21]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.20...v2.2.21
 [2.2.20]: https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/compare/v2.2.19...v2.2.20
