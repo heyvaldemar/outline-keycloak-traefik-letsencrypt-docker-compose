@@ -13,14 +13,57 @@
 # have to remember after `up -d` rather than part of it. The admin API needs no
 # shell on the other side and no Docker socket on this one.
 #
-# BusyBox wget has no --method. The admin API reads with GET and mutates with
-# POST, so a plain fetch and --post-data cover every call this makes.
+# THE REQUEST TRAVELS ON STDIN, NOT ON A COMMAND LINE. This used BusyBox wget,
+# with the admin token in --header and the S3 secret key in --post-data: both
+# in wget's arguments, which every user on the host reads with ps while the
+# call runs. BusyBox wget takes headers from nowhere else, so each request is
+# written by the shell's own printf into nc through a FIFO, and the reply's
+# status line decides success the way wget's exit status did.
+# The FIFO stays open until the reply is whole (its Content-Length is in):
+# BusyBox nc half-closes the connection the moment its input ends, the admin
+# API drops a request whose client did that before it answered, and it keeps
+# an answered connection open for a minute.
 set -eu
 
-A="http://${GARAGE_HOST}:3903"
-H="Authorization: Bearer ${GARAGE_ADMIN_TOKEN}"
-get()  { wget -q -O- --header="$H" "$A$1"; }
-post() { wget -q -O- --header="$H" --header="Content-Type: application/json" --post-data="$2" "$A$1"; }
+W="$(mktemp -d)"
+trap 'rm -rf "$W"' EXIT
+mkfifo "$W/in"
+# reply_whole <file>: the headers have ended and Content-Length bytes followed
+reply_whole() {
+  hdr=$(awk '{ n += length($0) + 1 } /^\r?$/ { print n; exit }' "$1")
+  [ -n "$hdr" ] || return 1
+  len=$(tr -d '\r' < "$1" | sed -n 's/^[Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Ll][Ee][Nn][Gg][Tt][Hh]: *\([0-9]*\).*/\1/p' | head -n 1)
+  [ "$(wc -c < "$1")" -ge $((hdr + ${len:-0})) ]
+}
+# http <METHOD> <path> [json body]: prints the reply body; fails unless 2xx.
+http() {
+  : > "$W/reply"
+  nc "$GARAGE_HOST" 3903 < "$W/in" > "$W/reply" &
+  nc_pid=$!
+  exec 3> "$W/in"
+  printf '%s %s HTTP/1.1\r\nHost: %s:3903\r\nAuthorization: Bearer %s\r\nConnection: close\r\n' "$1" "$2" "$GARAGE_HOST" "$GARAGE_ADMIN_TOKEN" >&3
+  if [ -n "${3:-}" ]; then
+    printf 'Content-Type: application/json\r\nContent-Length: %s\r\n\r\n%s' "${#3}" "$3" >&3
+  else
+    printf '\r\n' >&3
+  fi
+  i=0
+  until reply_whole "$W/reply"; do
+    i=$((i + 1))
+    if [ "$i" -gt 300 ] || ! kill -0 "$nc_pid" 2>/dev/null; then break; fi
+    sleep 0.1
+  done
+  exec 3>&-
+  wait "$nc_pid" || true
+  reply_whole "$W/reply" || return 1
+  tr -d '\r' < "$W/reply" | sed '1,/^$/d'
+  case "$(head -n 1 "$W/reply")" in
+    "HTTP/1."?" 2"??" "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+get()  { http GET "$1"; }
+post() { http POST "$1" "$2"; }
 # The admin API answers with pretty-printed JSON; these pull one scalar out of
 # it without adding a JSON parser to this image.
 jnum() { tr ',{}' '\n' | sed -n "s/.*\"$1\"[: ]*\([0-9]*\).*/\1/p" | head -1; }

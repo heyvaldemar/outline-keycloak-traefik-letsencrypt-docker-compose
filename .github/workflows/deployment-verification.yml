@@ -325,9 +325,8 @@ jobs:
           # /bitnami/minio/data, so the volume is mounted there. The migration
           # script defaults to the same image for the same reason.
           docker volume create "$vol" > /dev/null
-          docker run -d --name ci-old-minio --network outline-network \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" \
+          MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" docker run -d --name ci-old-minio --network outline-network \
+            -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD \
             -v "$vol:/bitnami/minio/data" docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20 > /dev/null
           # --entrypoint sh, and it is not optional: the MinIO image has an
           # entrypoint, so `docker run … minio/minio sh -c …` asks the minio
@@ -339,16 +338,30 @@ jobs:
           timeout 3m bash -c 'until docker run --rm --network outline-network --entrypoint sh \
             docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20 \
             -c "curl -fsS http://ci-old-minio:9000/minio/health/live" >/dev/null 2>&1; do sleep 3; done'
-          docker run --rm --network outline-network --entrypoint sh \
-            -e P="$OUTLINE_MINIO_ADMIN_PASSWORD" docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20 -c '
-              mc alias set old http://ci-old-minio:9000 minioadmin "$P" > /dev/null
+          P="$OUTLINE_MINIO_ADMIN_PASSWORD" docker run --rm --network outline-network --entrypoint sh \
+            -e P docker.io/bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20 -c '
+              export MC_HOST_old="http://minioadmin:$P@ci-old-minio:9000"
               mc mb old/data > /dev/null 2>&1 || true
               echo "written under MinIO before the upgrade" | mc pipe old/data/uploads/legacy.txt
               head -c 300000 /dev/urandom | mc pipe old/data/uploads/legacy-big.bin'
           docker rm -f ci-old-minio > /dev/null
 
           chmod +x outline-minio-to-garage.sh
+          # No credential on a command line while the migration runs: every
+          # command line on the runner is read several times a second, compared
+          # through a file holding the values, so none is ever printed.
+          vals="$(mktemp)"; counts="$(mktemp)"; chmod 600 "$vals"
+          printf '%s\n%s\n' "$OUTLINE_MINIO_ADMIN_PASSWORD" "$OUTLINE_S3_SECRET_KEY" > "$vals"
+          # shellcheck disable=SC2009  # every command line on the runner, not one process
+          ( while :; do { ps -eo args= | grep -cF -f "$vals" || true; } >> "$counts"; sleep 0.2; done ) &
+          sampler=$!
           ./outline-minio-to-garage.sh
+          kill "$sampler"; wait "$sampler" 2>/dev/null || true
+          samples=$(wc -l < "$counts"); hits=$(awk '$1 > 0 { n++ } END { print n + 0 }' "$counts")
+          rm -f "$vals" "$counts"
+          echo "$samples samples of every command line during the migration, $hits with a credential"
+          [ "$samples" -ge 10 ] || { echo "::error::only $samples samples were taken"; exit 1; }
+          [ "$hits" -eq 0 ] || { echo "::error::a credential was on a command line during the migration"; exit 1; }
 
           S3_HOST="$S3_HOST" AK="$OUTLINE_S3_ACCESS_KEY" SK="$OUTLINE_S3_SECRET_KEY" \
           BUCKET="${OUTLINE_S3_BUCKET_NAME:-data}" python3 tests/s3-migrated.py

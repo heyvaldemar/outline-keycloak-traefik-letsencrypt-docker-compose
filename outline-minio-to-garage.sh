@@ -71,9 +71,12 @@ echo "--> starting a throwaway MinIO against $MINIO_VOLUME (read only path, noth
 OLD="outline-minio-migration-$$"
 cleanup() { docker rm -f "$OLD" > /dev/null 2>&1 || true; }
 trap cleanup EXIT
+# Every credential reaches docker by name, from this script's environment: a
+# value after -e NAME= is in docker's arguments, which every user on the host
+# reads with ps, and the rclone below runs for as long as the copy takes.
+export MINIO_ROOT_USER="${OUTLINE_MINIO_ADMIN:-minioadmin}" MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD"
 docker run -d --name "$OLD" --network "$NET" \
-  -e MINIO_ROOT_USER="${OUTLINE_MINIO_ADMIN:-minioadmin}" \
-  -e MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD" \
+  -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
   -v "$MINIO_VOLUME:$MINIO_DATA_DIR" \
   "$MINIO_IMAGE" > /dev/null
 
@@ -84,17 +87,19 @@ for _ in $(seq 1 30); do
 done
 
 rclone() {
+  RCLONE_CONFIG_OLD_ACCESS_KEY_ID="${OUTLINE_MINIO_ADMIN:-minioadmin}" \
+  RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY="$OUTLINE_MINIO_ADMIN_PASSWORD" \
+  RCLONE_CONFIG_NEW_ACCESS_KEY_ID="$OUTLINE_S3_ACCESS_KEY" \
+  RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY="$OUTLINE_S3_SECRET_KEY" \
   docker run --rm --network "$NET" \
     -e RCLONE_CONFIG_OLD_TYPE=s3 -e RCLONE_CONFIG_OLD_PROVIDER=Minio \
     -e RCLONE_CONFIG_OLD_ENDPOINT="http://$OLD:9000" \
-    -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID="${OUTLINE_MINIO_ADMIN:-minioadmin}" \
-    -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY="$OUTLINE_MINIO_ADMIN_PASSWORD" \
+    -e RCLONE_CONFIG_OLD_ACCESS_KEY_ID -e RCLONE_CONFIG_OLD_SECRET_ACCESS_KEY \
     -e RCLONE_CONFIG_NEW_TYPE=s3 -e RCLONE_CONFIG_NEW_PROVIDER=Other \
     -e RCLONE_CONFIG_NEW_ENDPOINT="http://garage:3900" \
     -e RCLONE_CONFIG_NEW_REGION=garage \
     -e RCLONE_CONFIG_NEW_FORCE_PATH_STYLE=true \
-    -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID="$OUTLINE_S3_ACCESS_KEY" \
-    -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY="$OUTLINE_S3_SECRET_KEY" \
+    -e RCLONE_CONFIG_NEW_ACCESS_KEY_ID -e RCLONE_CONFIG_NEW_SECRET_ACCESS_KEY \
     "$RCLONE_IMAGE" "$@"
 }
 
