@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - **`traefik:3.7` was rebuilt upstream**; the pin moved from `sha256:c1ea95f3b3ea…` to `sha256:b7b1b31e6440…`. Same version, same tag, a rebuilt base image — the usual shape of a security fix in a base layer.
+- **The MinIO-to-Garage migration no longer puts the old MinIO password on a command line.** The throwaway MinIO it starts to read your old bucket ran Bitnami's entrypoint. That entrypoint runs a setup script first, and the script calls `mc alias set` with the root user and password as arguments, retrying until the server answers. On every start the password sat for a moment on a command line that any user on the host can read with `ps`. The script now starts `minio server` itself, so the credentials stay in the container's environment, as they already did for docker and rclone. CI's command-line sampler caught it on 14 November 2026 in [run 43602438743](https://github.com/heyvaldemar/outline-keycloak-traefik-letsencrypt-docker-compose/actions/runs/43602438743). It catches it in one run out of several, because each `mc` lives for milliseconds. A sampler reading every command line in the container for 15 seconds found the password in 19 of 7,374 samples with Bitnami's entrypoint and in 0 of 8,743 with the new start. A custom `OUTLINE_MINIO_IMAGE_TAG` still works: `minio` is on the PATH in Bitnami's image and in `minio/minio` alike.
 
 ## [2.2.26] - 2026-11-13
 

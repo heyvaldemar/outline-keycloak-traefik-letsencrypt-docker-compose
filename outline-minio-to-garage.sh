@@ -74,11 +74,24 @@ trap cleanup EXIT
 # Every credential reaches docker by name, from this script's environment: a
 # value after -e NAME= is in docker's arguments, which every user on the host
 # reads with ps, and the rclone below runs for as long as the copy takes.
+#
+# THE SERVER BINARY IS THE ENTRYPOINT, NOT THE IMAGE'S SCRIPTS. Bitnami's
+# entrypoint runs a setup script before the server, and that script calls
+# `mc alias set local http://localhost:9000 <user> <password>`, retrying
+# until the server answers: the root password sat on mc's command line for a
+# moment on every start, readable with ps by any user on the host. The CI
+# sampler caught it on 2026-11-14 (run 43602438743, one run in several, since
+# each mc lives for milliseconds). With `minio server` started directly the
+# credentials stay in the environment: a sampler reading every command line
+# in the container for 15 s found the password in 19 of 7374 samples under
+# Bitnami's entrypoint and in 0 of 8743 under this one. `minio` is on PATH in
+# Bitnami's image and in minio/minio alike, so OUTLINE_MINIO_IMAGE_TAG keeps
+# working with either.
 export MINIO_ROOT_USER="${OUTLINE_MINIO_ADMIN:-minioadmin}" MINIO_ROOT_PASSWORD="$OUTLINE_MINIO_ADMIN_PASSWORD"
 docker run -d --name "$OLD" --network "$NET" \
   -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
   -v "$MINIO_VOLUME:$MINIO_DATA_DIR" \
-  "$MINIO_IMAGE" > /dev/null
+  --entrypoint minio "$MINIO_IMAGE" server --address :9000 "$MINIO_DATA_DIR" > /dev/null
 
 for _ in $(seq 1 30); do
   docker run --rm --network "$NET" --entrypoint sh "$MINIO_IMAGE" \
